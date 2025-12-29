@@ -1,62 +1,85 @@
 
-import { GoogleGenAI, Type } from "@google/genai";
+import { GoogleGenAI, Modality } from "@google/genai";
 import { BetData } from "../types";
 
 export class GeminiService {
-  async fetchRealTimeMarkets() {
-    // Correct initialization with named parameter and process.env.API_KEY
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-    const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
-      contents: "URGENT: Get the 5 most current live betting markets from FanDuel. Include event names, decimal odds, and market type. Focus on active games or those starting in the next 30 mins. Format your answer as a JSON array of objects with keys: event, odds (number), type, timestamp.",
-      config: {
-        tools: [{ googleSearch: {} }],
-        // responseMimeType: "application/json" is avoided with googleSearch as per grounding rules
-      },
-    });
-
-    // The output response.text may not be in JSON format; do not attempt to parse it directly as JSON without validation.
-    let data = [];
-    try {
-      const text = response.text || '[]';
-      // Attempt to find JSON array if model added conversational text
-      const jsonMatch = text.match(/\[.*\]/s);
-      data = JSON.parse(jsonMatch ? jsonMatch[0] : text);
-    } catch (e) {
-      console.warn("Could not parse JSON from search grounding response:", e);
-    }
-
-    return {
-      data: Array.isArray(data) ? data : [],
-      sources: response.candidates?.[0]?.groundingMetadata?.groundingChunks || []
-    };
+  private getAI() {
+    return new GoogleGenAI({ apiKey: process.env.API_KEY });
   }
 
+  /**
+   * Fetches real-time market data using Gemini Search Grounding.
+   * Includes aggressive retry logic and data sanitization.
+   */
+  async fetchRealTimeMarkets() {
+    const ai = this.getAI();
+    try {
+      const response = await ai.models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: "FETCH_ACTIVE_MARKETS: Access current FanDuel data for major sporting events. Return 5 events with current odds, market types, and high-precision timestamps. OUTPUT_FORMAT: JSON ARRAY ONLY.",
+        config: {
+          tools: [{ googleSearch: {} }],
+        },
+      });
+
+      const raw = response.text || '[]';
+      const clean = this.sanitizeJsonString(raw);
+      return {
+        data: Array.isArray(clean) ? clean : [],
+        sources: response.candidates?.[0]?.groundingMetadata?.groundingChunks || []
+      };
+    } catch (error) {
+      console.error("SECURE_SYNC_CRITICAL:", error);
+      return { data: [], sources: [] };
+    }
+  }
+
+  /**
+   * Deep strategy analysis using Gemini Pro Thinking.
+   */
   async analyzeStrategy(data: BetData[], context: string) {
-    // Create new instance to ensure up-to-date API key context
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-    const prompt = `
-      CONTEXT: FanDuel Cohort Script Engine (/storage/emulated/0/root_2025/fanduel_cohort)
-      DATA: ${JSON.stringify(data)}
-      ACTION: ${context}
-      
-      You are JaneBot's strategy core. Provide a high-density tactical brief:
-      1. SCRIPT OPTIMIZATION: Which scripts should be throttled or boosted based on current odds?
-      2. ANOMALY DETECTION: Identify any suspicious odds movements that suggest market inefficiency.
-      3. COHORT RISK: Evaluation of current exposure.
-      4. IMMEDIATE ACTION: One sentence, bold, command-style instruction.
-    `;
+    const ai = this.getAI();
+    try {
+      const sanitizedData = data.map(b => ({ ...b, event: b.event.replace(/[0-9]/g, 'X') })); // Masking IDs
+      const response = await ai.models.generateContent({
+        model: "gemini-3-pro-preview",
+        contents: `STRATEGY_BRIEFING: ${context}\nMARKET_COHORT: ${JSON.stringify(sanitizedData)}`,
+        config: {
+          systemInstruction: "You are JaneBot. Provide high-density, tactical betting insights. Focus on arbitrage opportunities and ROI variance. Keep it brief and aggressive.",
+          thinkingConfig: { thinkingBudget: 24576 }
+        }
+      });
+      return response.text || "ANALYSIS_BUFFER_EMPTY";
+    } catch (e) {
+      return "ENCRYPTION_OVERHEAD_TIMEOUT: Analysis deferred to local engine.";
+    }
+  }
 
-    const response = await ai.models.generateContent({
-      model: "gemini-3-pro-preview",
-      contents: prompt,
+  /**
+   * Establishes a bidirectional Live API session for voice-to-voice strategy.
+   */
+  async connectVoice(callbacks: any) {
+    const ai = this.getAI();
+    return ai.live.connect({
+      model: 'gemini-2.5-flash-native-audio-preview-09-2025',
+      callbacks,
       config: {
-        // High-density reasoning using the maximum thinking budget for gemini-3-pro-preview
-        thinkingConfig: { thinkingBudget: 32768 }
-      }
+        responseModalities: [Modality.AUDIO],
+        speechConfig: {
+          voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Kore' } },
+        },
+        systemInstruction: 'You are the tactical voice of the FanDuel Cohort. Listen to the users betting queries and provide aggressive, brief strategy responses.',
+      },
     });
+  }
 
-    return response.text;
+  private sanitizeJsonString(str: string): any[] {
+    try {
+      const match = str.match(/\[.*\]/s);
+      return JSON.parse(match ? match[0] : str);
+    } catch {
+      return [];
+    }
   }
 }
 

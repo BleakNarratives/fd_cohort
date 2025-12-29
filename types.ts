@@ -6,7 +6,7 @@ export interface BetData {
   odds: number;
   stake: number;
   potentialReturn: number;
-  status: 'WON' | 'LOST' | 'PENDING';
+  status: 'WON' | 'LOST' | 'PENDING' | 'SECURE_TRANSIT';
   type: string;
 }
 
@@ -18,24 +18,25 @@ export interface AnalyticsSummary {
   roi: number;
 }
 
-export interface ScriptOutput {
-  scriptName: string;
-  lastRun: string;
-  status: 'SUCCESS' | 'ERROR' | 'IDLE';
-  output: string;
-}
-
 export interface SessionSettings {
   maxSessionMinutes: number;
   stopLossLimit: number;
   alertsEnabled: boolean;
+  stealthMode: boolean;
+  voiceActive: boolean;
 }
 
 export enum Tab {
   DASHBOARD = 'DASHBOARD',
-  ANALYTICS = 'ANALYTICS',
-  COHORT_STRATEGY = 'COHORT_STRATEGY',
   TERMINAL = 'TERMINAL',
   DEPLOYMENT = 'DEPLOYMENT',
-  SETTINGS = 'SETTINGS'
+  SETTINGS = 'SETTINGS',
+  VAULT = 'VAULT'
+}
+
+export interface SecurityEvent {
+  id: string;
+  type: 'ENCRYPTION' | 'SYNC' | 'WIPE' | 'ACCESS';
+  timestamp: string;
+  status: 'SUCCESS' | 'WARNING';
 }

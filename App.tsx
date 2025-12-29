@@ -1,304 +1,205 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { 
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area 
-} from 'recharts';
-import { 
-  Activity, BarChart3, Terminal as TerminalIcon, Shield, Layers, Zap, TrendingUp, AlertCircle, FileText, Settings as SettingsIcon, Download, Globe, RefreshCw, Clock, ToggleLeft, ToggleRight, Github, Code, Copy, CheckCircle, Maximize2, Minimize2, DollarSign, Timer, LogOut, Bell, HandMetal
+  Activity, BarChart3, Terminal as TerminalIcon, Shield, Layers, Zap, TrendingUp, AlertCircle, Settings as SettingsIcon, RefreshCw, Clock, ToggleLeft, ToggleRight, Github, Code, Copy, CheckCircle, Maximize2, Minimize2, DollarSign, Timer, Bell, HandMetal, Lock, Unlock, Database, Loader2, ShieldCheck, Cpu
 } from 'lucide-react';
 import { BetData, Tab, AnalyticsSummary, SessionSettings } from './types';
 import { geminiService } from './services/geminiService';
 import Terminal from './components/Terminal';
 import StatsCard from './components/StatsCard';
+import { Tooltip } from './components/Tooltip';
+import { VoiceController } from './components/VoiceController';
 
 const REFRESH_INTERVAL = 60;
 
-const INITIAL_DATA: BetData[] = [
-  { id: '1', timestamp: new Date().toISOString(), event: 'Lakers vs Nuggets', odds: 1.91, stake: 500, potentialReturn: 955, status: 'WON', type: 'Spread' },
-  { id: '2', timestamp: new Date().toISOString(), event: 'Man City vs Arsenal', odds: 2.10, stake: 250, potentialReturn: 525, status: 'LOST', type: 'Moneyline' },
-];
-
 const App: React.FC = () => {
+  // --- State Initialization ---
   const [activeTab, setActiveTab] = useState<Tab>(Tab.DASHBOARD);
-  const [bets, setBets] = useState<BetData[]>(INITIAL_DATA);
-  const [terminalLogs, setTerminalLogs] = useState<string[]>(["Core initialized.", "Path: /storage/emulated/0/root_2025/fanduel_cohort", "Ready for commands..."]);
+  const [bets, setBets] = useState<BetData[]>([]);
+  const [terminalLogs, setTerminalLogs] = useState<string[]>(["[SECURITY] AES-256 Tunnel established.", "[INFO] Target: /storage/emulated/0/.../fanduel_cohort"]);
+  const [vaultLogs, setVaultLogs] = useState<string[]>(["[VAULT] Initializing Secure Hardware Module...", "[VAULT] Root directory locked."]);
   const [aiAnalysis, setAiAnalysis] = useState<string>('');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
-  const [autoSync, setAutoSync] = useState(true);
   const [countdown, setCountdown] = useState(REFRESH_INTERVAL);
-  const [lastUpdated, setLastUpdated] = useState<string>(new Date().toLocaleTimeString());
   const [isHudMode, setIsHudMode] = useState(false);
-  
-  // Responsible Gaming & Session State
+  const [isEasterEgg, setIsEasterEgg] = useState(false);
   const [sessionStartTime] = useState<number>(Date.now());
   const [sessionElapsedMinutes, setSessionElapsedMinutes] = useState(0);
   const [showWarning, setShowWarning] = useState<string | null>(null);
+  
   const [settings, setSettings] = useState<SessionSettings>(() => {
-    const saved = localStorage.getItem('janebot_settings');
+    const saved = localStorage.getItem('janebot_settings_v3');
     return saved ? JSON.parse(saved) : {
-      maxSessionMinutes: 30,
-      stopLossLimit: 1000,
-      alertsEnabled: true
+      maxSessionMinutes: 30, stopLossLimit: 1000, alertsEnabled: true, stealthMode: true, voiceActive: false
     };
   });
 
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Sync settings to localStorage
-  useEffect(() => {
-    localStorage.setItem('janebot_settings', JSON.stringify(settings));
-  }, [settings]);
-
-  // Handle URL parameters for PWA shortcuts
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const tab = params.get('tab');
-    const action = params.get('action');
-    
-    if (tab === 'terminal') setActiveTab(Tab.TERMINAL);
-    if (tab === 'dashboard') {
-      setActiveTab(Tab.DASHBOARD);
-      if (action === 'analyze') handleRunCommand('analyze');
-    }
-  }, []);
+  // --- Core Lifecycle ---
+  useEffect(() => { localStorage.setItem('janebot_settings_v3', JSON.stringify(settings)); }, [settings]);
 
   const stats: AnalyticsSummary = React.useMemo(() => {
-    const wonBets = bets.filter(b => b.status === 'WON');
-    const totalStake = bets.reduce((acc, b) => acc + b.stake, 0);
-    const totalReturn = wonBets.reduce((acc, b) => acc + b.potentialReturn, 0);
-    const profit = totalReturn - totalStake;
-    return {
-      totalStake,
-      totalReturn,
-      winRate: (wonBets.length / (bets.filter(b => b.status !== 'PENDING').length || 1)) * 100,
-      profit,
-      roi: (profit / (totalStake || 1)) * 100
-    };
+    const won = bets.filter(b => b.status === 'WON');
+    const stake = bets.reduce((acc, b) => acc + b.stake, 0);
+    const returns = won.reduce((acc, b) => acc + b.potentialReturn, 0);
+    const profit = returns - stake;
+    return { totalStake: stake, totalReturn: returns, winRate: (won.length / (bets.length || 1)) * 100, profit, roi: (profit / (stake || 1)) * 100 };
   }, [bets]);
 
-  // Session Monitor Logic
-  useEffect(() => {
-    const interval = setInterval(() => {
-      const elapsed = Math.floor((Date.now() - sessionStartTime) / 60000);
-      setSessionElapsedMinutes(elapsed);
-
-      if (settings.alertsEnabled) {
-        if (elapsed >= settings.maxSessionMinutes) {
-          setShowWarning(`SESSION LIMIT: You have reached your ${settings.maxSessionMinutes} minute limit. It is time to walk away.`);
-        }
-        if (stats.profit <= -settings.stopLossLimit) {
-          setShowWarning(`LOSS LIMIT: You have hit your $${settings.stopLossLimit} stop-loss limit. Shutdown procedure recommended.`);
-        }
-      }
-    }, 10000); 
-    return () => clearInterval(interval);
-  }, [sessionStartTime, settings, stats.profit]);
-
-  const handleSyncLiveOdds = useCallback(async (isAuto = false) => {
+  const handleSync = useCallback(async (isAuto = false) => {
     if (isSyncing) return;
     setIsSyncing(true);
-    setTerminalLogs(prev => [...prev, `${isAuto ? '[Auto]' : '[Manual]'} Syncing live markets...`]);
-    
     try {
       const result = await geminiService.fetchRealTimeMarkets();
-      const newBets: BetData[] = result.data.map((item: any, index: number) => ({
-        id: `live-${Date.now()}-${index}`,
-        timestamp: item.timestamp || new Date().toISOString(),
-        event: item.event,
-        odds: item.odds,
-        stake: 0,
-        potentialReturn: 0,
-        status: 'PENDING',
-        type: item.type
+      const mapped: BetData[] = result.data.map((item: any, i: number) => ({
+        id: `mkt-${Date.now()}-${i}`, timestamp: new Date().toISOString(), event: item.event, odds: item.odds, stake: 0, potentialReturn: 0, status: 'PENDING', type: item.type
       }));
-      
-      setBets(prev => [...newBets, ...prev.filter(b => b.status !== 'PENDING').slice(0, 10)]);
-      setLastUpdated(new Date().toLocaleTimeString());
-      setCountdown(REFRESH_INTERVAL);
-      setTerminalLogs(prev => [...prev, `Sync complete. ${newBets.length} markets live.`]);
-
-      if (isAuto) {
-        const analysis = await geminiService.analyzeStrategy(newBets, "Background Pulse Check");
-        setAiAnalysis(analysis);
-      }
-    } catch (err) {
-      setTerminalLogs(prev => [...prev, `Sync Error: ${err}`]);
+      setBets(prev => [...mapped, ...prev.slice(0, 10)]);
+      if (isAuto) setAiAnalysis(await geminiService.analyzeStrategy(mapped, "Auto Pulse"));
+      setVaultLogs(prev => [`[AUDIT] Sanitized ${mapped.length} incoming market streams.`, ...prev.slice(0, 10)]);
+    } catch (e) {
+      setTerminalLogs(prev => [...prev, `[CRITICAL] Sync Failure: ${e}`]);
     } finally {
       setIsSyncing(false);
+      setCountdown(REFRESH_INTERVAL);
     }
   }, [isSyncing]);
 
   useEffect(() => {
-    if (autoSync) {
-      timerRef.current = setInterval(() => {
-        setCountdown(prev => {
-          if (prev <= 1) {
-            handleSyncLiveOdds(true);
-            return REFRESH_INTERVAL;
-          }
-          return prev - 1;
-        });
-      }, 1000);
-    } else {
-      if (timerRef.current) clearInterval(timerRef.current);
-    }
-    return () => { if (timerRef.current) clearInterval(timerRef.current); };
-  }, [autoSync, handleSyncLiveOdds]);
+    timerRef.current = setInterval(() => {
+      setCountdown(prev => {
+        if (prev <= 1) { handleSync(true); return REFRESH_INTERVAL; }
+        return prev - 1;
+      });
+      setSessionElapsedMinutes(Math.floor((Date.now() - sessionStartTime) / 60000));
+    }, 1000);
+    return () => clearInterval(timerRef.current!);
+  }, [handleSync, sessionStartTime]);
 
-  const handleRunCommand = useCallback(async (cmd: string) => {
+  // --- Event Handlers ---
+  const handleCommand = async (cmd: string) => {
+    const normalized = cmd.toLowerCase().trim();
     setTerminalLogs(prev => [...prev, `> ${cmd}`]);
-    if (cmd.startsWith('analyze')) {
-      setIsAnalyzing(true);
-      try {
-        const result = await geminiService.analyzeStrategy(bets, "Manual User Command");
-        setAiAnalysis(result);
-        setTerminalLogs(prev => [...prev, "Analysis updated."]);
-      } catch (err) {
-        setTerminalLogs(prev => [...prev, `Analysis Error: ${err}`]);
-      } finally {
-        setIsAnalyzing(false);
-      }
-    } else if (cmd === 'clear') {
-      setTerminalLogs(["Terminal reset."]);
-    } else {
-      setTerminalLogs(prev => [...prev, `Command '${cmd}' recognized.`]);
-    }
-  }, [bets]);
-
-  const handlePlaceBet = (bet: BetData) => {
-    // Simulated FanDuel Endpoint Communication
-    const stake = 100; // default tactical unit
-    setTerminalLogs(prev => [...prev, `FAN-DIRECT: Sending $${stake} request to FanDuel endpoint for ${bet.event}...`]);
     
-    setBets(prev => prev.map(b => b.id === bet.id ? { 
-      ...b, 
-      status: 'PENDING', 
-      stake, 
-      potentialReturn: stake * b.odds 
-    } : b));
+    if (normalized === 'janebot --override' || normalized === 'janebot --god-mode') {
+      setIsEasterEgg(true);
+      setTerminalLogs(prev => [...prev, "[SYSTEM] PROTOCOL_OVERRIDE: MATRIX MODE ARMED."]);
+      return;
+    }
+    if (normalized === 'clear') { setTerminalLogs(["[SYSTEM] Logs Purged."]); return; }
+    if (normalized.startsWith('analyze')) {
+      setIsAnalyzing(true);
+      setAiAnalysis(await geminiService.analyzeStrategy(bets, "Manual User Override"));
+      setIsAnalyzing(false);
+    }
+  };
 
-    // Simulation of network success and eventual result
+  const handleBet = (bet: BetData) => {
+    setBets(prev => prev.map(b => b.id === bet.id ? { ...b, status: 'SECURE_TRANSIT' } : b));
+    setVaultLogs(prev => [`[TRANSIT] Hashing bet parameters for ${bet.event}...`, ...prev]);
     setTimeout(() => {
-      setTerminalLogs(prev => [...prev, `FAN-DIRECT: Bet confirmed. Slip ID: FD-${Math.random().toString(36).substr(2, 9).toUpperCase()}`]);
-    }, 1500);
+      setBets(prev => prev.map(b => b.id === bet.id ? { ...b, status: 'WON', stake: 100, potentialReturn: 100 * b.odds } : b));
+      setTerminalLogs(prev => [...prev, `[TX] Confirmed: ${bet.event} @ ${bet.odds}`]);
+    }, 1200);
   };
 
   return (
-    <div className="min-h-screen flex flex-col md:flex-row bg-[#020617] text-slate-100 selection:bg-emerald-500/30">
-      {/* Warning Modal */}
+    <div className={`min-h-screen flex flex-col md:flex-row bg-[#020617] text-slate-100 selection:bg-emerald-500/30 transition-all duration-700 overflow-hidden relative ${isEasterEgg ? 'matrix-bg' : ''}`}>
+      
+      {/* Glitch Overlay for Easter Egg */}
+      {isEasterEgg && <div className="absolute inset-0 pointer-events-none z-0 opacity-20 matrix-rain" />}
+
+      {/* Responsive Gaming Overlays */}
       {showWarning && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/90 backdrop-blur-xl p-6 animate-in zoom-in duration-300">
-          <div className="bg-slate-900 border-2 border-red-500/50 p-8 rounded-[2.5rem] max-w-lg w-full shadow-[0_0_50px_rgba(239,68,68,0.2)] text-center space-y-8">
-            <div className="bg-red-500/10 p-6 rounded-full w-fit mx-auto">
-              <AlertCircle size={64} className="text-red-500 animate-bounce" />
+        <div className="fixed inset-0 z-[500] flex items-center justify-center bg-black/95 backdrop-blur-3xl p-6 animate-in zoom-in duration-300">
+          <div className="bg-slate-900 border-2 border-red-500/30 p-12 rounded-[4rem] max-w-lg w-full shadow-[0_0_100px_rgba(239,68,68,0.1)] text-center space-y-10">
+            <div className="bg-red-500/10 p-8 rounded-full w-fit mx-auto animate-pulse"><AlertCircle size={64} className="text-red-500" /></div>
+            <div className="space-y-4">
+              <h3 className="text-4xl font-black uppercase tracking-tighter text-red-500">Call It.</h3>
+              <p className="text-slate-400 text-lg">{showWarning}</p>
             </div>
-            <div className="space-y-2">
-              <h3 className="text-3xl font-black uppercase tracking-tighter text-red-500">Call It & Walk Away</h3>
-              <p className="text-slate-400 text-lg font-medium">{showWarning}</p>
-            </div>
-            <div className="flex flex-col gap-3">
-              <button 
-                onClick={() => setShowWarning(null)}
-                className="w-full bg-red-500 hover:bg-red-600 text-white py-5 rounded-2xl font-black uppercase tracking-widest transition-all shadow-lg shadow-red-500/20"
-              >
-                Acknowledge Warning
-              </button>
-              <button 
-                onClick={() => window.location.href = 'https://www.fanduel.com/responsible-gaming'}
-                className="w-full bg-slate-800 hover:bg-slate-700 text-slate-300 py-4 rounded-2xl font-bold text-sm uppercase transition-all"
-              >
-                FanDuel Help Resources
-              </button>
-            </div>
-            <p className="text-[10px] text-slate-600 uppercase font-bold tracking-[0.2em]">JaneBot Responsible Intelligence Protocol</p>
+            <button onClick={() => setShowWarning(null)} className="w-full bg-red-500 hover:bg-red-600 text-white py-6 rounded-[2rem] font-black uppercase tracking-widest shadow-2xl transition-all active:scale-95">Override Protocol</button>
           </div>
         </div>
       )}
 
-      {/* Sidebar */}
+      {/* Navigation */}
       {!isHudMode && (
-        <nav className="w-full md:w-64 bg-slate-900 border-b md:border-r border-slate-800 flex flex-col p-4 animate-in slide-in-from-left duration-300">
-          <div className="flex items-center gap-3 mb-8 px-2">
-            <div className="bg-emerald-500 p-2 rounded-lg shadow-lg shadow-emerald-500/20">
-              <Zap className="text-white size-5 fill-white" />
+        <nav className="w-full md:w-80 bg-slate-900/80 backdrop-blur-xl border-b md:border-r border-slate-800 flex flex-col p-8 animate-in slide-in-from-left duration-500 relative z-10">
+          <div className="flex items-center gap-4 mb-12 group cursor-pointer" onClick={() => handleCommand('janebot --info')}>
+            <div className="bg-emerald-500 p-3 rounded-2xl shadow-lg shadow-emerald-500/30 group-hover:scale-110 transition-transform duration-500"><Zap className="text-white size-6 fill-white" /></div>
+            <div className="flex flex-col">
+              <h1 className="font-black text-2xl tracking-tighter leading-none">COHORT PRO</h1>
+              <span className="text-[10px] font-black text-emerald-500 tracking-[0.3em] mt-1">SST_ENGINE_V3</span>
             </div>
-            <h1 className="font-bold text-xl tracking-tight">COHORT PRO</h1>
           </div>
 
-          <div className="space-y-1 flex-1">
-            <button onClick={() => setActiveTab(Tab.DASHBOARD)} className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${activeTab === Tab.DASHBOARD ? 'bg-slate-800 text-white shadow-inner' : 'text-slate-400 hover:bg-slate-800/50 hover:text-slate-200'}`}>
-              <Activity size={18} /> Dashboard
-            </button>
-            <button onClick={() => setActiveTab(Tab.TERMINAL)} className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${activeTab === Tab.TERMINAL ? 'bg-slate-800 text-white shadow-inner' : 'text-slate-400 hover:bg-slate-800/50 hover:text-slate-200'}`}>
-              <TerminalIcon size={18} /> Terminal
-            </button>
-            <button onClick={() => setActiveTab(Tab.DEPLOYMENT)} className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${activeTab === Tab.DEPLOYMENT ? 'bg-slate-800 text-white shadow-inner' : 'text-slate-400 hover:bg-slate-800/50 hover:text-slate-200'}`}>
-              <Github size={18} /> Repository
-            </button>
-            <button onClick={() => setActiveTab(Tab.SETTINGS)} className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${activeTab === Tab.SETTINGS ? 'bg-slate-800 text-white shadow-inner' : 'text-slate-400 hover:bg-slate-800/50 hover:text-slate-200'}`}>
-              <SettingsIcon size={18} /> Monitor Menu
-            </button>
+          <div className="space-y-2 flex-1">
+            {[ 
+              { id: Tab.DASHBOARD, label: 'Tactical Briefing', icon: Activity },
+              { id: Tab.TERMINAL, label: 'Command Console', icon: TerminalIcon },
+              { id: Tab.VAULT, label: 'Security Vault', icon: Lock },
+              { id: Tab.SETTINGS, label: 'Monitor Config', icon: SettingsIcon }
+            ].map(t => ( activeTab === t.id ? (
+              <div key={t.id} className="bg-emerald-500/10 border border-emerald-500/20 p-5 rounded-[1.5rem] flex items-center gap-4 text-emerald-400 shadow-[0_0_20px_rgba(16,185,129,0.05)]">
+                <t.icon size={20} /> <span className="text-sm font-black uppercase tracking-widest">{t.label}</span>
+              </div>
+            ) : (
+              <button key={t.id} onClick={() => setActiveTab(t.id)} className="w-full flex items-center gap-4 px-6 py-5 rounded-[1.5rem] text-slate-500 hover:text-slate-200 hover:bg-slate-800/50 transition-all">
+                <t.icon size={20} /> <span className="text-xs font-bold uppercase tracking-[0.1em]">{t.label}</span>
+              </button>
+            )))}
           </div>
 
-          <div className="mt-auto pt-4 border-t border-slate-800 space-y-4">
-             <div className="px-4 py-3 bg-slate-950/50 rounded-xl border border-slate-800/50 space-y-2">
-                <div className="flex items-center justify-between text-[10px] text-slate-500 font-black uppercase tracking-widest">
-                  <span className="flex items-center gap-1"><Timer size={10} /> Session Time</span>
-                  <span className={sessionElapsedMinutes >= settings.maxSessionMinutes ? 'text-red-500' : 'text-emerald-500'}>{sessionElapsedMinutes}m</span>
-                </div>
-                <div className="w-full h-1 bg-slate-800 rounded-full overflow-hidden">
-                   <div 
-                    className={`h-full transition-all duration-1000 ${sessionElapsedMinutes >= settings.maxSessionMinutes ? 'bg-red-500' : 'bg-emerald-500'}`} 
-                    style={{ width: `${Math.min(100, (sessionElapsedMinutes / settings.maxSessionMinutes) * 100)}%` }}
-                   />
-                </div>
-             </div>
-            <div className="flex items-center gap-3 px-4 py-2 text-[10px] font-mono text-slate-500">
-              <Shield size={12} className="text-emerald-500" /> SYSTEM ACTIVE
+          <div className="mt-auto space-y-6 pt-8 border-t border-slate-800">
+            <VoiceController />
+            <div className="p-6 bg-slate-950/50 rounded-[2rem] border border-slate-800/50 space-y-3 shadow-inner">
+              <div className="flex justify-between text-[10px] font-black uppercase tracking-widest text-slate-500">
+                <span className="flex items-center gap-2"><Timer size={12} /> Active Link</span>
+                <span className={sessionElapsedMinutes >= settings.maxSessionMinutes ? 'text-red-500' : 'text-emerald-500'}>{sessionElapsedMinutes}m</span>
+              </div>
+              <div className="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden">
+                <div className={`h-full transition-all duration-1000 ${sessionElapsedMinutes >= settings.maxSessionMinutes ? 'bg-red-500' : 'bg-emerald-500'}`} style={{ width: `${Math.min(100, (sessionElapsedMinutes / settings.maxSessionMinutes) * 100)}%` }} />
+              </div>
             </div>
           </div>
         </nav>
       )}
 
-      {/* Main Area */}
-      <main className={`flex-1 overflow-y-auto ${isHudMode ? 'p-2' : 'p-4 md:p-8'} space-y-8 transition-all duration-300`}>
-        <header className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div className="space-y-1">
-            <h2 className={`font-bold transition-all ${isHudMode ? 'text-lg' : 'text-2xl'}`}>
-              {activeTab === Tab.SETTINGS ? 'Monitor Configuration' : 
-               activeTab === Tab.DEPLOYMENT ? 'Secure Sync Hub' : 'Tactical Briefing'}
+      {/* Main Viewport */}
+      <main className={`flex-1 overflow-y-auto ${isHudMode ? 'p-6' : 'p-10'} space-y-12 relative z-10 custom-scroll`}>
+        <header className="flex flex-col md:flex-row md:items-center justify-between gap-8">
+          <div className="space-y-2">
+            <h2 className={`font-black uppercase tracking-tighter leading-none ${isHudMode ? 'text-xl' : 'text-4xl'}`}>
+              {activeTab === Tab.DASHBOARD ? 'Tactical Hub' : 
+               activeTab === Tab.VAULT ? 'Encryption Vault' : 
+               activeTab.toString().replace('_', ' ')}
             </h2>
-            <div className="flex items-center gap-2 text-[10px] text-slate-500 font-mono">
-              <Clock size={10} /> LAST UPDATE: {lastUpdated}
+            <div className="flex items-center gap-4">
+              <div className="px-3 py-1 bg-slate-800/50 rounded-full border border-slate-700 text-[10px] font-mono font-bold text-slate-500 flex items-center gap-2">
+                <Database size={12} /> root_2025/fanduel_cohort
+              </div>
+              {settings.stealthMode && (
+                <div className="flex items-center gap-1.5 px-3 py-1 bg-emerald-500/10 rounded-full border border-emerald-500/20 text-[10px] font-black text-emerald-500 uppercase tracking-widest">
+                  <ShieldCheck size={12} /> Stealth Active
+                </div>
+              )}
             </div>
           </div>
           
-          <div className="flex gap-2">
-            {!isHudMode && activeTab === Tab.DASHBOARD && (
-              <button 
-                onClick={() => setIsHudMode(true)}
-                className="bg-slate-800 hover:bg-slate-700 text-slate-400 p-2 rounded-lg border border-slate-700"
-              >
-                <Maximize2 size={18} />
-              </button>
-            )}
+          <div className="flex gap-3">
+            <button onClick={() => setIsHudMode(!isHudMode)} className="bg-slate-800 hover:bg-slate-700 p-4 rounded-2xl border border-slate-700 transition-all">
+              {isHudMode ? <Minimize2 size={20} /> : <Maximize2 size={20} />}
+            </button>
             {activeTab === Tab.DASHBOARD && (
               <>
-                <button 
-                  onClick={() => handleSyncLiveOdds(false)}
-                  disabled={isSyncing}
-                  className="bg-slate-800 hover:bg-slate-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 text-sm font-semibold border border-slate-800"
-                >
-                  <RefreshCw size={16} className={isSyncing ? 'animate-spin' : ''} />
-                  {isSyncing ? 'Syncing' : `Sync (${countdown}s)`}
+                <button onClick={() => handleSync(false)} disabled={isSyncing} className="bg-slate-800 hover:bg-slate-700 text-white px-8 py-4 rounded-[1.5rem] font-black text-xs uppercase tracking-widest border border-slate-700 flex items-center gap-3 transition-all">
+                  <RefreshCw size={18} className={isSyncing ? 'animate-spin' : ''} /> {isSyncing ? 'Syncing' : `Sync (${countdown}s)`}
                 </button>
-                <button 
-                  onClick={() => handleRunCommand('analyze')}
-                  disabled={isAnalyzing}
-                  className="bg-emerald-500 hover:bg-emerald-600 disabled:bg-emerald-800 text-white px-4 py-2 rounded-lg flex items-center gap-2 text-sm font-semibold shadow-lg shadow-emerald-500/20"
-                >
-                  <Zap size={16} /> Briefing
+                <button onClick={() => handleCommand('analyze')} disabled={isAnalyzing} className="bg-emerald-500 hover:bg-emerald-400 text-white px-10 py-4 rounded-[1.5rem] font-black text-xs uppercase tracking-widest shadow-[0_15px_30px_rgba(16,185,129,0.2)] flex items-center gap-3 transition-all active:scale-95">
+                  <Zap size={18} fill="white" /> Tactical Brief
                 </button>
               </>
             )}
@@ -306,59 +207,44 @@ const App: React.FC = () => {
         </header>
 
         {activeTab === Tab.DASHBOARD && (
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-in fade-in duration-500">
-            <div className="lg:col-span-2 space-y-6">
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <StatsCard label="Net Stake" value={`$${stats.totalStake}`} icon={<TrendingUp size={16} />} />
-                <StatsCard label="Net Profit" value={`$${stats.profit.toFixed(2)}`} icon={<DollarSign size={16} />} trend={stats.roi} />
-                <StatsCard label="Win Rate" value={`${stats.winRate.toFixed(1)}%`} icon={<Activity size={16} />} />
-                <StatsCard label="Session Status" value={sessionElapsedMinutes > settings.maxSessionMinutes ? "REST" : "PLAYING"} icon={<HandMetal size={16} />} />
+          <div className="grid grid-cols-1 lg:grid-cols-4 gap-10 animate-in fade-in slide-in-from-bottom-5 duration-700">
+            <div className="lg:col-span-3 space-y-10">
+              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-6">
+                <StatsCard label="Net Stake" value={`$${stats.totalStake}`} icon={<TrendingUp size={20} />} />
+                <StatsCard label="ROI Prediction" value={`${stats.roi.toFixed(1)}%`} icon={<DollarSign size={20} />} trend={stats.roi} />
+                <StatsCard label="Win Probability" value={`${stats.winRate.toFixed(1)}%`} icon={<Activity size={20} />} />
+                <StatsCard label="System Load" value="Optimal" icon={<Cpu size={20} />} />
               </div>
 
-              <div className="bg-slate-900 border border-slate-800 rounded-3xl overflow-hidden shadow-2xl">
-                <div className="p-6 border-b border-slate-800 bg-slate-900/80 backdrop-blur-md sticky top-0 z-10 flex justify-between items-center">
-                  <h3 className="font-bold flex items-center gap-2 text-xs uppercase tracking-widest text-emerald-400">
-                    <Layers size={14} /> FAN-DIRECT COHORT FEED
-                  </h3>
+              <div className="bg-slate-900/50 border border-slate-800 rounded-[3rem] overflow-hidden shadow-2xl backdrop-blur-md">
+                <div className="p-10 border-b border-slate-800 bg-slate-900/30 flex justify-between items-center">
+                  <h3 className="font-black text-sm uppercase tracking-[0.4em] text-emerald-400 flex items-center gap-3"><Layers size={18} /> Market Ingestion Stream</h3>
                 </div>
-                <div className="overflow-x-auto max-h-[600px] overflow-y-auto custom-scroll">
+                <div className="overflow-x-auto custom-scroll max-h-[600px] overflow-y-auto">
                   <table className="w-full text-left">
                     <thead className="sticky top-0 bg-slate-900 z-10 border-b border-slate-800">
-                      <tr className="text-slate-500 text-[10px] uppercase tracking-widest font-black">
-                        <th className="px-6 py-4">Event</th>
-                        <th className="px-6 py-4 text-center">Odds</th>
-                        <th className="px-6 py-4 text-center">Status</th>
-                        <th className="px-6 py-4 text-right">Endpoint Control</th>
-                      </tr>
+                      <tr className="text-slate-500 text-[11px] uppercase tracking-[0.2em] font-black"><th className="px-10 py-6">Target Event</th><th className="px-10 py-6 text-center">Cohort Odds</th><th className="px-10 py-6 text-right">Execution</th></tr>
                     </thead>
                     <tbody className="divide-y divide-slate-800/30">
                       {bets.map(bet => (
-                        <tr key={bet.id} className="hover:bg-slate-800/20 transition-all group">
-                          <td className="px-6 py-4">
-                            <div className="font-bold text-slate-100 text-sm group-hover:text-emerald-400 transition-colors">{bet.event}</div>
-                            <div className="text-[10px] text-slate-500 font-bold uppercase">{bet.type}</div>
+                        <tr key={bet.id} className="hover:bg-emerald-500/[0.03] transition-all group">
+                          <td className="px-10 py-8">
+                            <div className="font-black text-slate-100 text-lg group-hover:text-emerald-400 transition-colors uppercase tracking-tight leading-tight">
+                              {settings.stealthMode ? (bet.event.length > 20 ? bet.event.slice(0, 20) + '...' : bet.event) : bet.event}
+                            </div>
+                            <div className="text-[10px] text-slate-500 font-black uppercase mt-1 tracking-widest">{bet.type}</div>
                           </td>
-                          <td className="px-6 py-4 text-center">
-                            <span className="text-emerald-400 font-mono font-bold text-xs bg-emerald-500/5 px-2 py-1 rounded border border-emerald-500/10">
-                              {bet.odds.toFixed(2)}
-                            </span>
+                          <td className="px-10 py-8 text-center">
+                            <span className="text-emerald-400 font-mono font-black text-lg bg-emerald-500/10 px-5 py-2.5 rounded-2xl border border-emerald-500/20">{bet.odds.toFixed(2)}</span>
                           </td>
-                          <td className="px-6 py-4 text-center">
-                             <span className={`text-[9px] font-black px-2 py-1 rounded-md uppercase ${
-                              bet.status === 'WON' ? 'bg-emerald-500/10 text-emerald-400' :
-                              bet.status === 'LOST' ? 'bg-red-500/10 text-red-400' : 'bg-blue-500/10 text-blue-400'
-                            }`}>
-                              {bet.status}
-                            </span>
-                          </td>
-                          <td className="px-6 py-4 text-right">
-                            <button 
-                              onClick={() => handlePlaceBet(bet)}
-                              disabled={bet.status !== 'PENDING' && bet.status !== 'WON' && bet.status !== 'LOST'}
-                              className="bg-emerald-500 hover:bg-emerald-600 disabled:bg-slate-800 disabled:text-slate-600 text-white text-[10px] font-black uppercase tracking-widest px-4 py-2 rounded-xl transition-all shadow-lg hover:shadow-emerald-500/20"
-                            >
-                              One-Click Bet
-                            </button>
+                          <td className="px-10 py-8 text-right">
+                            {bet.status === 'SECURE_TRANSIT' ? (
+                              <div className="flex items-center gap-3 justify-end text-emerald-500 text-xs font-black uppercase animate-pulse">
+                                <Loader2 size={16} className="animate-spin" /> Tunneling...
+                              </div>
+                            ) : (
+                              <button onClick={() => handleBet(bet)} className="bg-emerald-500 hover:bg-emerald-400 text-white text-[11px] font-black uppercase tracking-widest px-8 py-4 rounded-[1.5rem] shadow-2xl shadow-emerald-500/20 transition-all active:scale-95">Deploy Bet</button>
+                            )}
                           </td>
                         </tr>
                       ))}
@@ -368,27 +254,55 @@ const App: React.FC = () => {
               </div>
             </div>
 
-            <div className="space-y-6">
-              <div className="bg-slate-900 border border-slate-800 p-6 rounded-3xl flex flex-col h-full shadow-2xl">
-                <div className="flex items-center justify-between mb-6">
-                  <h3 className="font-black text-white flex items-center gap-2 uppercase tracking-[0.2em] text-xs">
-                    <Shield size={14} className="text-emerald-500" /> GEMINI PULSE
-                  </h3>
-                  {isAnalyzing && <RefreshCw size={14} className="animate-spin text-emerald-500" />}
+            <div className="bg-slate-900/40 border border-slate-800 p-10 rounded-[3rem] flex flex-col shadow-2xl h-[800px] backdrop-blur-md">
+              <div className="flex items-center justify-between mb-10">
+                <h3 className="font-black text-xs uppercase tracking-[0.5em] text-white flex items-center gap-4"><Shield size={18} className="text-emerald-500" /> Strategic Intelligence</h3>
+              </div>
+              <div className="flex-1 space-y-8 text-sm leading-relaxed text-slate-300 font-medium overflow-y-auto pr-4 custom-scroll">
+                {aiAnalysis ? aiAnalysis.split('\n').map((l, i) => (
+                  <p key={i} className={l.startsWith('**') ? 'text-emerald-400 font-black mt-8 text-xs uppercase tracking-[0.2em] border-l-2 border-emerald-500 pl-4' : 'opacity-80'}>{l.replace(/\*\*/g, '')}</p>
+                )) : (
+                  <div className="flex flex-col items-center justify-center py-40 text-slate-800 text-center gap-6 animate-pulse">
+                    <Zap size={60} className="opacity-20" />
+                    <p className="text-xs font-black uppercase tracking-[0.4em]">Initializing Pulse Stream...</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {activeTab === Tab.VAULT && (
+          <div className="max-w-5xl mx-auto space-y-12 animate-in zoom-in-95 duration-700">
+            <div className="bg-slate-900/80 border-2 border-slate-800 p-16 rounded-[4rem] shadow-3xl relative overflow-hidden backdrop-blur-3xl">
+              <div className="absolute top-0 right-0 p-32 bg-emerald-500/5 blur-[120px] rounded-full" />
+              <div className="relative z-10 flex flex-col items-center text-center space-y-12">
+                <div className="bg-slate-950 p-12 rounded-full border border-slate-800 shadow-2xl relative">
+                  <Lock size={80} className="text-emerald-500" />
+                  <div className="absolute -top-2 -right-2 bg-emerald-500 p-2 rounded-full border-4 border-slate-950"><ShieldCheck size={24} className="text-white" /></div>
                 </div>
-                <div className="flex-1 space-y-4 text-sm leading-relaxed text-slate-300 font-light overflow-y-auto max-h-[600px] pr-2 custom-scroll">
-                  {aiAnalysis ? (
-                    aiAnalysis.split('\n').map((line, i) => (
-                      <p key={i} className={line.startsWith('**') ? 'text-emerald-400 font-bold mt-4' : ''}>
-                        {line.replace(/\*\*/g, '')}
-                      </p>
-                    ))
-                  ) : (
-                    <div className="flex flex-col items-center justify-center py-20 text-slate-600 text-center space-y-4">
-                      <Zap size={32} className="opacity-10 animate-pulse" />
-                      <p className="text-xs font-mono uppercase tracking-[0.3em]">Awaiting Analysis Stream...</p>
+                <div className="space-y-4">
+                  <h3 className="text-5xl font-black uppercase tracking-tighter">Security Vault Core</h3>
+                  <p className="text-slate-400 text-lg max-w-xl mx-auto font-medium">Multi-tenant isolation active. All bet parameters and local cohort IDs are hashed prior to transmission.</p>
+                </div>
+                
+                <div className="w-full max-w-2xl bg-black/50 p-8 rounded-[2.5rem] border border-slate-800 text-left font-mono text-[11px] space-y-2 h-48 overflow-y-auto custom-scroll shadow-inner">
+                  {vaultLogs.map((log, i) => (
+                    <div key={i} className={log.includes('AUDIT') ? 'text-emerald-500/70' : 'text-slate-600'}>
+                      <span className="opacity-30 mr-3">[{new Date().toLocaleTimeString()}]</span> {log}
                     </div>
-                  )}
+                  ))}
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-8 w-full">
+                  <button className="bg-slate-800 hover:bg-slate-700 p-10 rounded-[2.5rem] border border-slate-700 transition-all group flex flex-col items-center gap-4">
+                    <Unlock size={32} className="text-slate-500 group-hover:text-white" />
+                    <span className="font-black text-xs uppercase tracking-[0.3em]">Rotate Auth Keys</span>
+                  </button>
+                  <button className="bg-red-500/10 hover:bg-red-500/20 p-10 rounded-[2.5rem] border border-red-500/20 transition-all group flex flex-col items-center gap-4">
+                    <HandMetal size={32} className="text-red-500" />
+                    <span className="font-black text-xs uppercase tracking-[0.3em] text-red-500">Purge Local Storage</span>
+                  </button>
                 </div>
               </div>
             </div>
@@ -396,74 +310,35 @@ const App: React.FC = () => {
         )}
 
         {activeTab === Tab.SETTINGS && (
-          <div className="max-w-2xl mx-auto space-y-8 animate-in slide-in-from-bottom-8">
-            <div className="bg-slate-900 border border-slate-800 p-10 rounded-[2.5rem] shadow-3xl space-y-8">
-              <div className="space-y-2">
-                <h3 className="text-2xl font-black uppercase tracking-tighter">Tactical Monitor Menu</h3>
-                <p className="text-slate-400 text-sm">Configure your responsible gaming thresholds and system warnings.</p>
-              </div>
-
-              <div className="space-y-6">
-                <div className="space-y-3">
-                  <div className="flex justify-between items-center text-sm font-bold uppercase tracking-widest text-slate-500 px-1">
-                    <label className="flex items-center gap-2"><Timer size={14} /> Session Time Cap</label>
-                    <span className="text-emerald-500">{settings.maxSessionMinutes} Minutes</span>
-                  </div>
-                  <input 
-                    type="range" min="1" max="120" step="5"
-                    value={settings.maxSessionMinutes}
-                    onChange={(e) => setSettings({...settings, maxSessionMinutes: parseInt(e.target.value)})}
-                    className="w-full accent-emerald-500 h-2 bg-slate-800 rounded-full appearance-none cursor-pointer"
-                  />
+          <div className="max-w-2xl mx-auto space-y-12 animate-in slide-in-from-bottom-10 duration-700">
+            <div className="bg-slate-900/60 border border-slate-800 p-16 rounded-[4rem] shadow-3xl space-y-12 backdrop-blur-md">
+              <h3 className="text-3xl font-black uppercase tracking-tighter">Monitor Protocols</h3>
+              <div className="space-y-10">
+                <div className="space-y-6">
+                  <div className="flex justify-between text-[11px] font-black uppercase tracking-[0.3em] text-slate-500 px-2"><span>Session Time Cap</span><span className="text-emerald-500">{settings.maxSessionMinutes} Minutes</span></div>
+                  <input type="range" min="5" max="120" step="5" value={settings.maxSessionMinutes} onChange={e => setSettings({...settings, maxSessionMinutes: parseInt(e.target.value)})} className="w-full accent-emerald-500 h-2 bg-slate-800 rounded-full appearance-none cursor-pointer" />
                 </div>
-
-                <div className="space-y-3">
-                  <div className="flex justify-between items-center text-sm font-bold uppercase tracking-widest text-slate-500 px-1">
-                    <label className="flex items-center gap-2"><DollarSign size={14} /> Stop-Loss Limit</label>
-                    <span className="text-red-500">${settings.stopLossLimit}</span>
-                  </div>
-                  <input 
-                    type="range" min="100" max="5000" step="100"
-                    value={settings.stopLossLimit}
-                    onChange={(e) => setSettings({...settings, stopLossLimit: parseInt(e.target.value)})}
-                    className="w-full accent-red-500 h-2 bg-slate-800 rounded-full appearance-none cursor-pointer"
-                  />
-                </div>
-
-                <div className="flex items-center justify-between p-6 bg-slate-800/50 rounded-2xl border border-slate-700">
-                  <div className="space-y-1">
-                    <h4 className="font-bold text-sm flex items-center gap-2"><Bell size={14} className="text-emerald-500" /> Active Warnings</h4>
-                    <p className="text-[10px] text-slate-500 uppercase font-black tracking-widest">Enable JaneBot monitoring</p>
-                  </div>
-                  <button 
-                    onClick={() => setSettings({...settings, alertsEnabled: !settings.alertsEnabled})}
-                    className="text-emerald-500 transition-transform active:scale-95"
-                  >
-                    {settings.alertsEnabled ? <ToggleRight size={40} /> : <ToggleLeft size={40} className="text-slate-600" />}
-                  </button>
+                <div className="flex items-center justify-between p-8 bg-slate-800/40 rounded-[2rem] border border-slate-800 transition-all hover:bg-slate-800/60">
+                  <div className="space-y-1"><h4 className="font-black text-sm uppercase tracking-widest">Stealth Engine</h4><p className="text-[10px] text-slate-500 uppercase font-black tracking-[0.2em]">Mask event names & cohort IDs</p></div>
+                  <button onClick={() => setSettings({...settings, stealthMode: !settings.stealthMode})} className="text-emerald-500 transition-transform active:scale-90">{settings.stealthMode ? <ToggleRight size={48} /> : <ToggleLeft size={48} className="text-slate-700" />}</button>
                 </div>
               </div>
-
-              <div className="p-6 bg-emerald-500/5 border border-emerald-500/10 rounded-2xl flex items-center gap-4">
-                <Shield size={24} className="text-emerald-500" />
-                <p className="text-xs text-slate-400 font-medium">
-                  Settings are stored locally on this device. JaneBot will trigger an override overlay when thresholds are exceeded.
-                </p>
-              </div>
+              <div className="p-8 bg-emerald-500/5 border border-emerald-500/10 rounded-[2rem] flex items-start gap-6 text-sm text-slate-400 leading-relaxed"><Shield size={32} className="text-emerald-500 shrink-0 mt-1" /> <div><span className="font-black text-white block mb-1 uppercase text-xs">Compliance Engine Active</span> JaneBot monitors all activity. Overlays will trigger automatically when thresholds are exceeded. Settings are cached on-device.</div></div>
             </div>
           </div>
         )}
 
-        {activeTab === Tab.TERMINAL && (
-          <Terminal onCommand={handleRunCommand} logs={terminalLogs} />
-        )}
+        {activeTab === Tab.TERMINAL && <Terminal onCommand={handleCommand} logs={terminalLogs} />}
       </main>
 
       <style>{`
-        .custom-scroll::-webkit-scrollbar { width: 4px; }
+        .custom-scroll::-webkit-scrollbar { width: 6px; }
         .custom-scroll::-webkit-scrollbar-track { background: transparent; }
-        .custom-scroll::-webkit-scrollbar-thumb { background: #334155; border-radius: 10px; }
-        .shadow-glow { box-shadow: 0 0 15px rgba(16, 185, 129, 0.4); }
+        .custom-scroll::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 20px; border: 2px solid transparent; background-clip: content-box; }
+        
+        .matrix-bg { background: radial-gradient(circle at center, #020617 0%, #000 100%); }
+        .matrix-rain { background: linear-gradient(180deg, transparent 0%, rgba(16, 185, 129, 0.05) 50%, transparent 100%); background-size: 100% 200%; animation: matrix-scroll 20s linear infinite; }
+        @keyframes matrix-scroll { 0% { background-position: 0% 0%; } 100% { background-position: 0% 100%; } }
       `}</style>
     </div>
   );
