@@ -8,19 +8,33 @@ export interface BetData {
   status: 'LIVE' | 'UPCOMING' | 'CLOSED';
   type: string;
   groundingSource?: string;
+  isBookmarked?: boolean;
 }
 
 export enum Tab {
   MARKETS = 'MARKETS',
-  STRATEGY = 'STRATEGY',
   SCRIPTS = 'SCRIPTS',
-  ACCURACY = 'ACCURACY',
   SETTINGS = 'SETTINGS',
-  RESPONSIBLE_PLAY = 'RESPONSIBLE_PLAY'
+  PITCH = 'PITCH',
+  DOCS = 'DOCS',
+  SAFETY = 'SAFETY',
+  CALENDAR = 'CALENDAR'
+}
+
+export enum EngineMode {
+  LIVE = 'LIVE_SCOUT',
+  LOCAL = 'LOCAL_COHORT'
+}
+
+export interface FilterState {
+  minOdds: number;
+  maxOdds: number;
+  sports: string[];
 }
 
 export interface SafetySettings {
   sessionWarnings: boolean;
-  warningInterval: number; // in minutes
-  maxSessionTime: number; // in minutes
+  warningInterval: number;
+  maxSessionTime: number;
+  engineMode: EngineMode;
 }

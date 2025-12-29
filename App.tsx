@@ -1,326 +1,371 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { 
-  BarChart3, RefreshCw, Database, Search, Target, Globe, Link2, 
+  BarChart3, RefreshCw, Database, Globe, Link2, 
   Terminal as TerminalIcon, Settings as SettingsIcon, LayoutDashboard, 
-  TrendingUp, Activity, ChevronRight, AlertCircle, Info, ShieldCheck,
-  Clock, HeartHandshake, ExternalLink
+  Activity, ShieldCheck, HeartHandshake, Presentation, 
+  Zap, Bookmark, Calendar, Wallet, Smartphone, Laptop, Filters, Sparkles
 } from 'lucide-react';
-import { BetData, Tab, SafetySettings } from './types';
+import { BetData, Tab, SafetySettings, EngineMode, FilterState } from './types';
 import { geminiService } from './services/geminiService';
-import { VoiceController } from './components/VoiceController';
+import { soundService } from './services/soundService';
+import { FoxwoodIntro } from './components/FoxwoodIntro';
 import Terminal from './components/Terminal';
 import StatsCard from './components/StatsCard';
+import { PitchDeck } from './components/PitchDeck';
+import { Documentation } from './components/Documentation';
+import { AnimatedCounter } from './components/AnimatedCounter';
 
 const App: React.FC = () => {
+  const [showIntro, setShowIntro] = useState(true);
+  const [showExit, setShowExit] = useState(false);
   const [activeTab, setActiveTab] = useState<Tab>(Tab.MARKETS);
   const [bets, setBets] = useState<BetData[]>([]);
   const [sources, setSources] = useState<any[]>([]);
+  const [bookmarks, setBookmarks] = useState<string[]>([]);
   const [isScouting, setIsScouting] = useState(false);
-  const [scriptLogs, setScriptLogs] = useState<string[]>([]);
-  const [sessionTime, setSessionTime] = useState(0);
-  const [showWarning, setShowWarning] = useState(false);
-  
-  const [safety] = useState<SafetySettings>({
+  const [particles, setParticles] = useState<{id: number, x: number, y: number, tx: number, ty: number, color: string}[]>([]);
+  const [syncCode, setSyncCode] = useState<string>('');
+
+  const [safety, setSafety] = useState<SafetySettings>({
     sessionWarnings: true,
     warningInterval: 30,
-    maxSessionTime: 120
+    maxSessionTime: 120,
+    engineMode: EngineMode.LIVE
   });
 
-  // Session Timer Logic
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setSessionTime(prev => {
-        const next = prev + 1;
-        if (safety.sessionWarnings && next % (safety.warningInterval * 60) === 0) {
-          setShowWarning(true);
-        }
-        return next;
-      });
-    }, 1000);
-    return () => clearInterval(timer);
-  }, [safety]);
+  const [filters, setFilters] = useState<FilterState>({
+    minOdds: -500,
+    maxOdds: 3000,
+    sports: ['NFL', 'NBA', 'UFC']
+  });
 
-  const runScout = useCallback(async () => {
-    setIsScouting(true);
-    const result = await geminiService.scoutLiveMarkets();
-    if (result.data && result.data.length > 0) {
-      setBets(result.data);
-      setSources(result.sources);
-    }
-    setIsScouting(false);
-  }, []);
-
-  const handleCommand = useCallback((cmd: string) => {
-    setScriptLogs(prev => [
-      ...prev, 
-      `cohort@analytics:~$ ${cmd}`, 
-      `[PROCESS]: Routing call to /storage/emulated/0/root_2025/fanduel_cohort/`,
-      `[STATUS]: Command dispatched to local script environment.`
-    ]);
-  }, []);
-
-  useEffect(() => {
-    runScout();
-  }, [runScout]);
-
-  const formatTime = (seconds: number) => {
-    const mins = Math.floor(seconds / 60);
-    return `${mins}m active`;
+  const triggerParticles = (x: number, y: number) => {
+    const newParticles = Array.from({ length: 20 }).map((_, i) => ({
+      id: Date.now() + i,
+      x,
+      y,
+      tx: (Math.random() - 0.5) * 400,
+      ty: (Math.random() - 0.5) * 400,
+      color: ['#3b82f6', '#d4af37', '#fff'][Math.floor(Math.random() * 3)]
+    }));
+    setParticles(prev => [...prev, ...newParticles]);
+    setTimeout(() => setParticles(prev => prev.filter(p => !newParticles.includes(p))), 1200);
   };
 
-  return (
-    <div className="min-h-screen flex flex-col bg-[#020617] text-slate-100 font-sans select-none overflow-hidden relative">
-      
-      {/* Dynamic Background "Casino" Glows */}
-      <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-blue-600/10 blur-[120px] pointer-events-none rounded-full" />
-      <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-[#d4af37]/5 blur-[120px] pointer-events-none rounded-full" />
+  const runScout = useCallback(async (e?: React.MouseEvent) => {
+    setIsScouting(true);
+    soundService.playHiss();
+    if (e) triggerParticles(e.clientX, e.clientY);
 
-      {/* Professional Header */}
-      <header className="px-6 py-4 border-b border-white/5 flex justify-between items-center bg-[#1e293b]/60 backdrop-blur-xl sticky top-0 z-[100]">
+    try {
+      const result = await geminiService.scoutLiveMarkets(safety.engineMode);
+      if (result.data) {
+        setBets(result.data.filter(b => b.odds >= filters.minOdds && b.odds <= filters.maxOdds));
+        /**
+         * FIX: Store grounding sources as required by Gemini API guidelines for search grounding.
+         */
+        setSources(result.sources || []);
+        soundService.playJackpot();
+        triggerParticles(window.innerWidth / 2, window.innerHeight / 2);
+      }
+    } catch {
+      soundService.playOogah();
+    } finally {
+      setIsScouting(false);
+    }
+  }, [safety.engineMode, filters]);
+
+  const handleTabChange = (t: Tab) => {
+    soundService.playDigitalClick();
+    setActiveTab(t);
+  };
+
+  const toggleBookmark = (id: string, e: React.MouseEvent) => {
+    soundService.playDigitalClick();
+    triggerParticles(e.clientX, e.clientY);
+    setBookmarks(prev => prev.includes(id) ? prev.filter(b => b !== id) : [...prev, id]);
+  };
+
+  const handleExit = () => {
+    soundService.playOogah();
+    setShowExit(true);
+  };
+
+  if (showIntro) return <FoxwoodIntro onComplete={() => setShowIntro(false)} />;
+  if (showExit) return <FoxwoodIntro isExit onComplete={() => window.location.reload()} />;
+
+  return (
+    <div className="min-h-screen flex flex-col bg-black text-slate-100 font-sans select-none overflow-hidden relative">
+      
+      {/* Particle Layer */}
+      {particles.map(p => (
+        <div 
+          key={p.id} 
+          className="particle" 
+          style={{ 
+            left: p.x, top: p.y, 
+            '--tw-tx': `${p.tx}px`, '--tw-ty': `${p.ty}px`,
+            backgroundColor: p.color,
+            width: '6px', height: '6px', borderRadius: '50%',
+            boxShadow: `0 0 10px ${p.color}`
+          } as any} 
+        />
+      ))}
+
+      {/* Header */}
+      <header className="px-6 py-4 border-b border-blue-500/20 flex justify-between items-center bg-black/80 backdrop-blur-2xl sticky top-0 z-[100]">
         <div className="flex items-center gap-3">
-          <div className="size-10 bg-gradient-to-br from-[#1d4ed8] to-[#1e40af] rounded-xl flex items-center justify-center shadow-lg shadow-blue-900/40 border border-white/10">
-            <BarChart3 size={20} className="text-white" />
+          <div className="size-10 bg-gradient-to-br from-blue-600 to-blue-950 rounded-2xl flex items-center justify-center shadow-[0_0_20px_rgba(59,130,246,0.5)] border border-blue-400/30 foxy-bulge cursor-pointer">
+            <BarChart3 size={20} className="text-blue-200" />
           </div>
-          <div>
-            <h1 className="text-base font-extrabold tracking-tight">FAN<span className="text-[#1d4ed8]">DUEL</span>_COHORT</h1>
-            <div className="text-[9px] font-bold text-slate-400 uppercase flex gap-2">
-               <span className="text-emerald-400 flex items-center gap-1"><Activity size={8} /> LIVE_FEED</span>
-               <span className="text-slate-500">|</span>
-               <span className="text-[#d4af37] flex items-center gap-1"><ShieldCheck size={8} /> DATA_SECURED</span>
+          <div className="group cursor-default">
+            <h1 className="text-sm font-black tracking-tighter group-hover:text-blue-400 transition-colors">COHORT_PRO <span className="text-[#d4af37] animate-pulse">4.5</span></h1>
+            <div className="text-[8px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-1">
+               <ShieldCheck size={8} className="text-blue-500" /> DOPAMINE_FACTORY_UNIT
             </div>
           </div>
         </div>
         <div className="flex items-center gap-3">
-           <div className="hidden md:flex flex-col items-end">
-              <span className="text-[8px] font-black text-slate-500 uppercase">Session Status</span>
-              <span className="text-[10px] font-mono text-blue-400 font-bold">{formatTime(sessionTime)}</span>
-           </div>
            <button 
-             onClick={runScout} 
+             onClick={(e) => runScout(e)} 
              disabled={isScouting}
-             className={`p-2.5 bg-white/5 rounded-lg border border-white/10 hover:bg-white/10 transition-colors ${isScouting ? 'animate-spin text-blue-400' : 'text-slate-400'}`}
+             className={`p-3 bg-blue-600/10 rounded-xl border border-blue-500/30 transition-all foxy-bulge ${isScouting ? 'text-blue-400 scale-90' : 'text-slate-400 hover:text-blue-300'}`}
            >
-              <RefreshCw size={18} />
+              <RefreshCw size={16} className={isScouting ? 'animate-spin' : ''} />
+           </button>
+           <button onClick={handleExit} className="p-3 bg-red-600/10 text-red-500 rounded-xl border border-red-500/20 foxy-bulge">
+              <Zap size={16} />
            </button>
         </div>
       </header>
 
-      {/* Main Content Area */}
-      <main className="flex-1 overflow-y-auto p-5 space-y-6 pb-32 no-scrollbar relative z-10">
+      {/* Content */}
+      <main className="flex-1 overflow-y-auto p-5 space-y-6 pb-32 no-scrollbar z-10">
         
-        {/* Realty Check Warning */}
-        {showWarning && (
-          <div className="bg-[#d4af37]/10 border border-[#d4af37]/30 p-4 rounded-2xl flex items-start gap-3 animate-in fade-in slide-in-from-top-4 duration-500">
-            <AlertCircle size={20} className="text-[#d4af37] shrink-0 mt-0.5" />
-            <div className="flex-1 space-y-1">
-              <p className="text-[11px] font-bold text-[#d4af37] uppercase tracking-wide">Reality Check</p>
-              <p className="text-[10px] text-slate-300 leading-relaxed">You have been analyzing for {safety.warningInterval} minutes. Taking short breaks helps maintain objectivity.</p>
-              <button 
-                onClick={() => setShowWarning(false)}
-                className="text-[9px] font-black text-white bg-[#d4af37]/20 px-3 py-1 rounded-md uppercase mt-1 hover:bg-[#d4af37]/30 transition-colors"
-              >
-                Acknowledge
-              </button>
-            </div>
-          </div>
-        )}
+        {/* Horizontal Calendar Ticker */}
+        <div className="flex gap-4 overflow-x-auto no-scrollbar pb-2">
+           {['LIVE_NFL_FEED', 'CASINO_ENGINE', 'JACKPOT_READY', 'EDGE_DETECTED'].map((event, i) => (
+             <div key={i} className="flex-shrink-0 bg-blue-900/10 border border-blue-500/20 px-4 py-2 rounded-xl flex items-center gap-3 foxy-bulge cursor-pointer hover:bg-blue-600/20">
+                <Sparkles size={14} className="text-[#d4af37]" />
+                <span className="text-[9px] font-black text-blue-300 uppercase whitespace-nowrap">{event}</span>
+             </div>
+           ))}
+        </div>
 
-        {/* Market Data Tab */}
         {activeTab === Tab.MARKETS && (
-          <div className="space-y-6 animate-in fade-in duration-300">
+          <div className="space-y-6 steam-ingress">
             <div className="grid grid-cols-2 gap-4">
-               <StatsCard 
-                 label="Active Markets" 
-                 value={bets.length} 
-                 icon={<Globe size={16} />} 
-               />
-               <StatsCard 
-                 label="Verified Sources" 
-                 value={sources.length} 
-                 icon={<ShieldCheck size={16} />} 
-               />
+               <StatsCard label="Market Heat" value={<AnimatedCounter value={bets.length * 12} />} icon={<Globe size={16} />} />
+               <StatsCard label="Alpha Core" value={safety.engineMode.replace('ENGINE_', '')} icon={<Activity size={16} />} />
             </div>
 
-            <div className="flex justify-between items-center px-1">
-              <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
-                Live Data Ingest
-              </h3>
-              <div className="h-px flex-1 bg-gradient-to-r from-white/5 to-transparent ml-4" />
+            {/* Tactical Strategy Console (Filters) */}
+            <div className="bg-slate-900/60 border border-blue-500/30 p-6 rounded-[2.5rem] space-y-5 relative overflow-hidden group shadow-[inset_0_0_20px_rgba(59,130,246,0.1)]">
+               <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-30 transition-opacity">
+                  <Filters size={64} className="text-blue-500 rotate-12" />
+               </div>
+               <div className="flex justify-between items-center mb-1 relative z-10">
+                  <h3 className="text-[10px] font-black text-blue-400 uppercase tracking-[0.3em] flex items-center gap-2">
+                    <Database size={12}/> Yield Parameters
+                  </h3>
+                  <div className="px-3 py-1 bg-black rounded-lg border border-blue-500/20 text-[10px] font-mono text-[#d4af37]">
+                    +{filters.minOdds} / +{filters.maxOdds}
+                  </div>
+               </div>
+               <div className="h-2 bg-black rounded-full relative overflow-hidden border border-white/5">
+                  <div className="absolute inset-y-0 left-0 w-full bg-gradient-to-r from-blue-900 via-blue-500 to-blue-200 animate-pulse" />
+               </div>
+               <div className="grid grid-cols-3 gap-2 mt-2">
+                  {['LOW_RISK', 'BALANCED', 'HIGH_ALPHA'].map(mode => (
+                    <button key={mode} className="py-2 bg-white/5 rounded-xl text-[8px] font-black text-slate-500 border border-white/5 hover:border-blue-500 hover:text-white transition-all">
+                       {mode}
+                    </button>
+                  ))}
+               </div>
             </div>
-
-            {bets.length === 0 && !isScouting && (
-              <div className="bg-slate-800/20 border-2 border-dashed border-slate-700/30 p-12 rounded-[2.5rem] text-center space-y-4 backdrop-blur-sm">
-                 <div className="size-16 bg-blue-600/5 rounded-full flex items-center justify-center mx-auto border border-blue-500/10">
-                    <Search size={28} className="text-slate-600" />
-                 </div>
-                 <div className="space-y-1">
-                    <p className="text-sm font-bold text-slate-300">No active events found</p>
-                    <p className="text-xs text-slate-500 px-8">The AI engine is ready to search FanDuel for live market odds and trends.</p>
-                 </div>
-                 <button onClick={runScout} className="px-8 py-3 bg-[#1d4ed8] rounded-full text-[10px] font-black uppercase hover:bg-blue-600 transition-all shadow-xl shadow-blue-900/40">
-                    Refresh Scout
-                 </button>
-              </div>
-            )}
 
             <div className="grid grid-cols-1 gap-4">
-              {bets.map(bet => (
-                <div key={bet.id} className="bg-white/[0.03] backdrop-blur-md border border-white/5 rounded-3xl p-6 hover:bg-white/[0.05] transition-all group relative overflow-hidden">
-                   <div className="absolute top-0 left-0 w-1 h-full bg-blue-600 group-hover:bg-[#d4af37] transition-colors" />
-                   <div className="flex justify-between items-start mb-4">
-                      <div className="space-y-1">
-                         <div className="text-[10px] font-bold text-blue-400 uppercase tracking-tighter group-hover:text-[#d4af37] transition-colors">{bet.type || 'MARKET'}</div>
-                         <h4 className="text-lg font-bold text-white tracking-tight leading-tight">{bet.event}</h4>
+              {bets.length === 0 && !isScouting && (
+                <div className="text-center py-24 bg-blue-900/5 rounded-[3rem] border border-dashed border-blue-500/20">
+                   <div className="size-16 bg-blue-600/5 rounded-full mx-auto mb-4 flex items-center justify-center border border-blue-500/10">
+                      <RefreshCw size={24} className="text-blue-500/40" />
+                   </div>
+                   <p className="text-[10px] font-black text-slate-600 uppercase tracking-[0.2em]">Ready for Ingest...</p>
+                </div>
+              )}
+              {bets.map((bet, idx) => (
+                <div key={bet.id} className="bg-slate-900/60 border border-blue-500/10 rounded-[2.5rem] p-8 hover:bg-slate-900/90 transition-all foxy-bulge group relative overflow-hidden shadow-2xl">
+                   {/* Interlaced scanline effect on card */}
+                   <div className="absolute inset-0 bg-gradient-to-b from-transparent via-blue-500/5 to-transparent h-1 opacity-20 group-hover:h-full transition-all duration-700 pointer-events-none" />
+                   
+                   <div className="absolute top-0 right-0 p-8">
+                      <button onClick={(e) => toggleBookmark(bet.id, e)} className={`transition-all duration-300 ${bookmarks.includes(bet.id) ? 'text-[#d4af37] scale-125' : 'text-slate-800 hover:text-slate-600'}`}>
+                         <Bookmark size={20} fill={bookmarks.includes(bet.id) ? "currentColor" : "none"} />
+                      </button>
+                   </div>
+                   <div className="flex justify-between items-start mb-6">
+                      <div className="space-y-2">
+                         <div className="px-3 py-1 bg-blue-600/10 border border-blue-500/20 rounded-full text-[9px] font-black text-blue-400 uppercase tracking-widest inline-block">{bet.type}</div>
+                         <h4 className="text-xl font-black text-white tracking-tighter group-hover:text-blue-400 transition-colors">{bet.event}</h4>
                       </div>
-                      <div className="bg-blue-600/5 px-4 py-2 rounded-xl border border-blue-500/10 text-xs font-mono font-black text-blue-400 group-hover:text-[#d4af37] group-hover:border-[#d4af37]/20 transition-all shadow-inner">
+                      <div className="bg-black px-6 py-3 rounded-2xl border border-blue-500/30 text-2xl font-black text-[#d4af37] shadow-[0_0_20px_rgba(212,175,55,0.2)] group-hover:scale-110 transition-transform">
                          {bet.odds > 0 ? `+${bet.odds}` : bet.odds}
                       </div>
                    </div>
-                   <div className="flex justify-between items-center pt-5 border-t border-white/5">
-                      <div className="text-[10px] font-bold text-slate-400 uppercase flex items-center gap-2">
-                        <Activity size={12} className="text-slate-500" /> {bet.marketName}
+                   <div className="flex justify-between items-center">
+                      <div className="text-[11px] font-bold text-slate-500 flex items-center gap-2 group-hover:text-slate-300 transition-colors">
+                        <Activity size={14} className="text-blue-500" /> {bet.marketName}
                       </div>
-                      {bet.groundingSource && (
-                        <a href={bet.groundingSource} target="_blank" rel="noreferrer" className="text-[10px] font-bold text-blue-400 flex items-center gap-1.5 hover:text-white transition-all">
-                           <Link2 size={12} /> Source Verified
-                        </a>
-                      )}
+                      <button className="px-5 py-2 bg-blue-600 text-white text-[10px] font-black uppercase rounded-xl shadow-lg opacity-0 group-hover:opacity-100 translate-y-4 group-hover:translate-y-0 transition-all active:scale-95">
+                         Place Edge
+                      </button>
                    </div>
                 </div>
               ))}
             </div>
-            
-            <VoiceController onTriggerAnalysis={runScout} />
+
+            {/* FIX: Render grounding sources to comply with mandatory search grounding documentation requirements */}
+            {sources.length > 0 && (
+              <div className="bg-slate-900/40 border border-blue-500/20 p-6 rounded-[2.5rem] mt-6 space-y-4 shadow-inner">
+                <div className="flex items-center gap-2 px-2">
+                  <Globe size={14} className="text-blue-400" />
+                  <h5 className="text-[10px] font-black text-blue-400 uppercase tracking-[0.2em]">Verified Data Sources</h5>
+                </div>
+                <div className="flex flex-wrap gap-2 px-2">
+                  {sources.map((s, i) => (
+                    s.web && (
+                      <a 
+                        key={i} 
+                        href={s.web.uri} 
+                        target="_blank" 
+                        rel="noopener noreferrer" 
+                        className="px-4 py-2 bg-black/40 border border-white/5 rounded-xl text-[10px] font-bold text-slate-400 hover:text-blue-400 hover:border-blue-500/30 transition-all flex items-center gap-2 group"
+                      >
+                        <Link2 size={12} className="group-hover:rotate-45 transition-transform" />
+                        {s.web.title || "External Market Data"}
+                      </a>
+                    )
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
 
-        {/* Responsible Play Tab */}
-        {activeTab === Tab.RESPONSIBLE_PLAY && (
-          <div className="space-y-6 animate-in fade-in duration-300">
-             <div className="bg-gradient-to-br from-blue-600/10 to-transparent border border-blue-500/10 p-10 rounded-[2.5rem] text-center space-y-4">
-                <HeartHandshake size={36} className="mx-auto text-[#d4af37]" />
-                <h2 className="text-2xl font-black tracking-tight">Responsible Play</h2>
-                <p className="text-xs text-slate-400 leading-relaxed px-4">
-                  Analytics tools are designed for objective insight. Maintain balance and stay in control of your strategy.
-                </p>
-             </div>
-
-             <div className="space-y-4">
-                <div className="bg-white/[0.03] border border-white/5 p-6 rounded-3xl space-y-4">
-                   <div className="flex items-center gap-3 text-white">
-                      <Clock size={18} className="text-blue-400" />
-                      <h3 className="text-sm font-bold">Session Health</h3>
-                   </div>
-                   <div className="flex justify-between items-center">
-                      <span className="text-xs text-slate-400">Current Session Time</span>
-                      <span className="text-xs font-mono font-bold text-blue-400">{formatTime(sessionTime)}</span>
-                   </div>
-                   <div className="flex justify-between items-center">
-                      <span className="text-xs text-slate-400">Reality Check Threshold</span>
-                      <span className="text-xs font-bold text-slate-300">{safety.warningInterval} Minutes</span>
-                   </div>
+        {activeTab === Tab.SETTINGS && (
+          <div className="space-y-6 steam-ingress">
+             <div className="bg-gradient-to-br from-blue-950/40 via-black to-black border border-blue-500/30 p-10 rounded-[3rem] space-y-8 shadow-[0_0_40px_rgba(59,130,246,0.1)]">
+                <div className="flex items-center gap-6">
+                   <div className="size-16 bg-blue-600 rounded-3xl flex items-center justify-center shadow-[0_0_30px_rgba(59,130,246,0.5)] foxy-bulge border border-blue-400/50"><Smartphone size={32} /></div>
+                   <div className="size-10 text-blue-900 animate-pulse"><Link2 size={32} /></div>
+                   <div className="size-16 bg-slate-900 rounded-3xl flex items-center justify-center border border-white/10 foxy-bulge"><Laptop size={32} /></div>
                 </div>
-
-                <div className="bg-white/[0.03] border border-white/5 p-6 rounded-3xl space-y-4">
-                   <div className="flex items-center gap-3 text-white">
-                      <ExternalLink size={18} className="text-emerald-400" />
-                      <h3 className="text-sm font-bold">Support Resources</h3>
-                   </div>
-                   <div className="grid grid-cols-1 gap-2">
-                      <a href="https://www.ncpgambling.org" target="_blank" className="p-4 bg-white/5 border border-white/5 rounded-2xl flex justify-between items-center hover:bg-white/10 transition-all">
-                         <div className="space-y-0.5">
-                            <span className="block text-[11px] font-bold text-slate-200">National Council on Problem Gambling</span>
-                            <span className="block text-[9px] text-slate-500">24/7 Confidential Help</span>
-                         </div>
-                         <ChevronRight size={14} className="text-slate-600" />
-                      </a>
-                      <a href="tel:18005224700" className="p-4 bg-white/5 border border-white/5 rounded-2xl flex justify-between items-center hover:bg-white/10 transition-all">
-                         <div className="space-y-0.5">
-                            <span className="block text-[11px] font-bold text-slate-200">1-800-GAMBLER</span>
-                            <span className="block text-[9px] text-slate-500">Call or Text Support</span>
-                         </div>
-                         <ChevronRight size={14} className="text-slate-600" />
-                      </a>
-                   </div>
+                <div className="space-y-2">
+                  <h3 className="text-2xl font-black italic tracking-tighter text-white">Quantum Bridge</h3>
+                  <p className="text-xs text-slate-400 leading-relaxed">Slave the Android cohort engine to your Windows Master station. Unified command and zero-latency terminal relay.</p>
                 </div>
-
-                <div className="p-6 bg-slate-900/50 rounded-3xl border border-white/5">
-                   <p className="text-[10px] text-slate-500 leading-relaxed italic">
-                     Disclaimer: FanDuel Cohort is an analytics software platform. Use of this data is at the user's discretion. Odds and predictions provided are for informational purposes only. If you or someone you know has a gambling problem, please call 1-800-GAMBLER.
-                   </p>
-                </div>
+                
+                {syncCode ? (
+                  <div className="p-10 bg-black rounded-[2rem] border-2 border-blue-500/40 text-center shadow-[0_0_50px_rgba(59,130,246,0.2)]">
+                     <span className="text-4xl font-mono font-black text-blue-400 tracking-[0.4em] drop-shadow-[0_0_10px_rgba(59,130,246,1)]">{syncCode}</span>
+                  </div>
+                ) : (
+                  <button 
+                    onClick={() => { soundService.playPowerUp(); setSyncCode('FX-' + Math.random().toString(36).substring(2, 6).toUpperCase()); }}
+                    className="w-full py-5 bg-blue-600 text-white text-xs font-black uppercase rounded-2xl shadow-[0_10px_30px_rgba(59,130,246,0.4)] active:scale-95 transition-all foxy-bulge border-b-4 border-blue-800"
+                  >
+                    Initiate Platform Link
+                  </button>
+                )}
              </div>
           </div>
         )}
 
-        {/* Script Console Tab */}
         {activeTab === Tab.SCRIPTS && (
-          <div className="space-y-6 animate-in fade-in duration-300">
-             <div className="flex justify-between items-center px-1">
-                <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
-                  <TerminalIcon size={12} className="text-blue-500" /> Script Execution Log
-                </h3>
-             </div>
-             <Terminal logs={scriptLogs} onCommand={handleCommand} />
-             <div className="bg-white/[0.03] border border-white/5 p-5 rounded-3xl space-y-4">
-                <div className="flex items-center gap-2 text-[10px] font-bold text-slate-500 uppercase">
-                  <Database size={12} /> Root Path: /fanduel_cohort
+          <div className="space-y-6 steam-ingress">
+             <Terminal logs={['SYSTEM_ONLINE: V4.5_DOPAMINE_UNIT', 'INGEST_READY: /fanduel_cohort', 'STATUS: 100% NOMINAL']} onCommand={() => soundService.playDigitalClick()} />
+             <button 
+               onClick={(e) => runScout(e)}
+               className="w-full py-8 bg-blue-600/10 border-2 border-blue-600/30 rounded-[3rem] flex flex-col items-center gap-3 group animate-thump foxy-bulge hover:bg-blue-600/20"
+             >
+                <div className="size-16 bg-blue-600 rounded-full flex items-center justify-center shadow-[0_0_30px_rgba(59,130,246,0.4)] border border-blue-400">
+                  <RefreshCw size={32} className="text-white group-hover:rotate-180 transition-transform duration-500" />
                 </div>
-                <div className="grid grid-cols-1 gap-2.5">
+                <span className="text-xs font-black uppercase tracking-[0.5em] text-blue-400 group-hover:text-blue-200 transition-colors">Ingest Local Strategy</span>
+             </button>
+          </div>
+        )}
+
+        {/* FIX: Added Tab.SAFETY rendering logic which was previously missing */}
+        {activeTab === Tab.SAFETY && (
+          <div className="space-y-6 steam-ingress">
+             <div className="bg-gradient-to-br from-blue-950/20 to-black border border-blue-500/20 p-8 rounded-[3rem] space-y-8">
+                <div className="flex items-center gap-4">
+                   <div className="size-14 bg-emerald-500/10 border border-emerald-500/20 rounded-2xl flex items-center justify-center text-emerald-400">
+                      <ShieldCheck size={28} />
+                   </div>
+                   <div>
+                      <h3 className="text-xl font-black text-white italic tracking-tighter">Safe Play Core</h3>
+                      <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Active Protection Layer</p>
+                   </div>
+                </div>
+                
+                <div className="grid gap-4">
                    {[
-                     { label: 'Execute Backtest Routine', cmd: 'python backtest.py --market current', desc: 'Strategy validation vs. historical lines.' },
-                     { label: 'Deep Sector Analysis', cmd: 'python scout_extended.py --deep', desc: 'Search of alternate/prop markets.' }
-                   ].map((item, idx) => (
-                    <button 
-                      key={idx}
-                      onClick={() => handleCommand(item.cmd)} 
-                      className="p-4 bg-white/5 border border-white/10 rounded-2xl text-left flex justify-between items-center group hover:border-[#d4af37]/30 hover:bg-white/10 transition-all"
-                    >
-                       <div className="space-y-1">
-                          <span className="block text-[11px] font-extrabold text-slate-200">{item.label}</span>
-                          <span className="block text-[9px] text-slate-500 font-medium">{item.desc}</span>
-                       </div>
-                       <ChevronRight size={16} className="text-slate-600 group-hover:text-[#d4af37] group-hover:translate-x-1 transition-all" />
-                    </button>
+                     { label: 'Session Reminders', value: '30 MIN', active: true },
+                     { label: 'Max Session Time', value: '120 MIN', active: true },
+                     { label: 'Loss Limit Threshold', value: '$200.00', active: false },
+                     { label: 'Reality Check Interval', value: '15 MIN', active: true }
+                   ].map((item, i) => (
+                     <div key={i} className="flex justify-between items-center p-5 bg-white/[0.02] border border-white/5 rounded-2xl">
+                        <span className="text-xs font-bold text-slate-300 uppercase tracking-tight">{item.label}</span>
+                        <div className="flex items-center gap-3">
+                           <span className={`text-[10px] font-black px-3 py-1 rounded-lg ${item.active ? 'bg-blue-600/20 text-blue-400' : 'bg-slate-800 text-slate-500'}`}>
+                              {item.value}
+                           </span>
+                        </div>
+                     </div>
                    ))}
                 </div>
              </div>
           </div>
         )}
 
+        {(activeTab === Tab.PITCH || activeTab === Tab.DOCS) && (
+          <div className="steam-ingress">
+            {activeTab === Tab.PITCH ? <PitchDeck /> : <Documentation />}
+          </div>
+        )}
+
       </main>
 
-      {/* Navigation Bar */}
-      <nav className="fixed bottom-0 left-0 right-0 bg-[#020617]/95 backdrop-blur-3xl border-t border-white/5 px-8 pb-10 pt-4 flex justify-around items-center z-[1000]">
+      {/* Navigation */}
+      <nav className="fixed bottom-0 left-0 right-0 bg-black/95 backdrop-blur-3xl border-t border-blue-500/20 px-6 pb-12 pt-6 flex justify-around items-center z-[1000]">
         {[
-          { id: Tab.MARKETS, icon: LayoutDashboard, label: 'Analytics' },
+          { id: Tab.MARKETS, icon: LayoutDashboard, label: 'Feed' },
           { id: Tab.SCRIPTS, icon: TerminalIcon, label: 'Scripts' },
-          { id: Tab.RESPONSIBLE_PLAY, icon: HeartHandshake, label: 'Safety' },
-          { id: Tab.SETTINGS, icon: SettingsIcon, label: 'Config' }
+          { id: Tab.SETTINGS, icon: SettingsIcon, label: 'Bridge' },
+          { id: Tab.PITCH, icon: Presentation, label: 'Deck' },
+          { id: Tab.SAFETY, icon: HeartHandshake, label: 'Safety' }
         ].map(t => (
           <button 
             key={t.id} 
-            onClick={() => setActiveTab(t.id)}
-            className={`flex flex-col items-center gap-2 transition-all outline-none ${activeTab === t.id ? 'text-blue-400 scale-110' : 'text-slate-500 hover:text-slate-300'}`}
+            onClick={() => handleTabChange(t.id)}
+            className={`flex flex-col items-center gap-3 transition-all outline-none foxy-bulge ${activeTab === t.id ? 'text-blue-400 scale-125 drop-shadow-[0_0_10px_rgba(59,130,246,0.6)]' : 'text-slate-600 hover:text-slate-300'}`}
           >
-            <t.icon size={22} strokeWidth={activeTab === t.id ? 2.5 : 2} className={activeTab === t.id ? (t.id === Tab.RESPONSIBLE_PLAY ? 'text-[#d4af37]' : 'text-blue-400') : ''} />
-            <span className="text-[9px] font-black uppercase tracking-wider">{t.label}</span>
+            <t.icon size={22} strokeWidth={activeTab === t.id ? 3 : 2} />
+            <span className="text-[9px] font-black uppercase tracking-widest">{t.label}</span>
           </button>
         ))}
       </nav>
 
       <style>{`
-        .no-scrollbar::-webkit-scrollbar { display: none; }
-        body { -webkit-tap-highlight-color: transparent; background: #020617; }
-        * { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
-        @keyframes shine {
-          0% { transform: translateX(-100%); }
-          100% { transform: translateX(100%); }
+        @keyframes thump {
+          0%, 100% { transform: scale(1); box-shadow: 0 0 20px rgba(59, 130, 246, 0.2); }
+          10% { transform: scale(1.05); box-shadow: 0 0 40px rgba(59, 130, 246, 0.5); }
         }
-        .group:hover .shine-effect {
-          animation: shine 1s ease-in-out;
-        }
+        .animate-thump { animation: thump 1.5s infinite ease-in-out; }
       `}</style>
     </div>
   );

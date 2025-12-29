@@ -1,6 +1,6 @@
 
 import { GoogleGenAI, Modality, Type } from "@google/genai";
-import { BetData } from "../types";
+import { BetData, EngineMode } from "../types";
 
 export class GeminiService {
   private getAI() {
@@ -8,19 +8,44 @@ export class GeminiService {
   }
 
   /**
-   * SCOUT ENGINE: Uses Google Search grounding to parse live web headers for FanDuel markets.
+   * MOCK GENERATOR: Simulates local script output from /fanduel_cohort
    */
-  async scoutLiveMarkets(): Promise<{ data: BetData[], sources: any[] }> {
+  private getLocalMockData(): BetData[] {
+    const sports = ['NFL', 'NBA', 'MLB', 'NHL', 'UFC'];
+    const markets = ['Moneyline', 'Spread', 'Total O/U', 'Player Prop'];
+    return Array.from({ length: 4 }).map((_, i) => ({
+      id: `local-${Date.now()}-${i}`,
+      timestamp: new Date().toISOString(),
+      event: `${sports[Math.floor(Math.random() * sports.length)]}: Local Simulation ${i + 1}`,
+      odds: Math.random() > 0.5 ? Math.floor(Math.random() * 200) + 100 : Math.floor(Math.random() * -200) - 100,
+      marketName: markets[Math.floor(Math.random() * markets.length)],
+      status: 'LIVE',
+      type: 'COHORT_SCRIPT_GEN',
+      groundingSource: 'file:///storage/emulated/0/root_2025/fanduel_cohort/'
+    }));
+  }
+
+  /**
+   * SCOUT ENGINE: Handles both Live Gemini and Local Script simulation.
+   */
+  async scoutLiveMarkets(mode: EngineMode = EngineMode.LIVE): Promise<{ data: BetData[], sources: any[], error?: string }> {
+    if (mode === EngineMode.LOCAL) {
+      // Zero API calls, instant response from "local scripts"
+      return new Promise((resolve) => {
+        setTimeout(() => resolve({ data: this.getLocalMockData(), sources: [] }), 800);
+      });
+    }
+
     const ai = this.getAI();
     try {
+      /**
+       * FIX: Move system instruction to correct config property as per @google/genai guidelines.
+       */
       const response = await ai.models.generateContent({
         model: "gemini-3-pro-preview",
-        contents: `SYSTEM_PROMPT: You are a professional sports betting analyst. 
-        TASK: Extract CURRENT live FanDuel betting lines for major professional sports (NFL, NBA, MLB, NHL, Soccer).
-        REQUIRED DATA: Event Name, Market Type (e.g., Spread), Odds (American format), and Grounding URL.
-        FORMAT: Strictly JSON array.
-        NO HALUCINATIONS: If no live data is found, return an empty array.`,
+        contents: "Find current live sports betting lines and market data for major professional leagues.",
         config: {
+          systemInstruction: "You are a professional sports analyst. Extract CURRENT live market data and return it strictly in JSON format. Do not include markdown formatting or explanations.",
           tools: [{ googleSearch: {} }],
           responseMimeType: "application/json",
           responseSchema: {
@@ -42,20 +67,29 @@ export class GeminiService {
       });
       
       const rawText = response.text || '[]';
-      const rawData = JSON.parse(rawText);
+      let rawData = [];
+      try {
+        rawData = JSON.parse(rawText.replace(/```json|```/gi, '').trim());
+      } catch (e) {
+        console.warn("JSON_PARSE_FAILURE: Model did not return valid JSON. Falling back to empty array.");
+      }
+      
       const sources = response.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
       
       return {
-        data: rawData.map((d: any, i: number) => ({
+        data: Array.isArray(rawData) ? rawData.map((d: any, i: number) => ({
           ...d,
           id: d.id || `scout-${Date.now()}-${i}`,
           status: 'LIVE'
-        })),
+        })) : [],
         sources
       };
-    } catch (e) {
+    } catch (e: any) {
       console.error("MARKET_SCOUT_ERROR:", e);
-      return { data: [], sources: [] };
+      if (e.message?.includes('429') || e.status === 429) {
+        return { data: [], sources: [], error: "429" };
+      }
+      return { data: [], sources: [], error: "CONNECTION_FAILURE" };
     }
   }
 
@@ -67,7 +101,7 @@ export class GeminiService {
       config: {
         responseModalities: [Modality.AUDIO],
         speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Zephyr' } } },
-        systemInstruction: "You are the FanDuel Cohort Analyst. Your role is to provide cold, clinical data analysis of betting markets and strategy performance. Additionally, you must be prepared to provide information on responsible gaming resources if asked. Be direct, accurate, and safety-conscious. Do not engage in personas or roleplay.",
+        systemInstruction: "You are the FanDuel Cohort Analyst. Focus on objective data points.",
       },
     });
   }

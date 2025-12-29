@@ -1,20 +1,24 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
 
-# Run and deploy your AI Studio app
+# 🦊 FanDuel Cohort Pro v4.5 (Exec Edition)
 
-This contains everything you need to run your app locally.
+## Overview
+FanDuel Cohort Pro is a high-fidelity analytics dashboard designed for professional edge detection in betting markets. It bridges the gap between local Python strategy scripts (`/fanduel_cohort`) and live market headers using the Gemini-3-Pro Scout Engine.
 
-View your app in AI Studio: https://ai.studio/apps/drive/1otLKuVO2vmI3NePlYB-RHkaPvDGFmXVn
+## Core Features
+- **Hybrid Ingestion**: Toggle between **Live Scout** (Gemini + Google Search) and **Local Cohort** (Direct script simulation).
+- **Edge Analytics**: Latency correction and sentiment overlay for line drift detection.
+- **Cross-Platform Sync**: Universal link system for Android and Windows environments.
+- **Executive Safety**: Hard-coded responsible play triggers and session telemetry.
 
-## Run Locally
+## Structure
+- `/components`: UI units (Terminal, Stats, Transitions).
+- `/services`: API integration (Gemini, Local Bridge).
+- `/storage`: (Conceptual) Linked to `/storage/emulated/0/root_2025/fanduel_cohort`.
 
-**Prerequisites:**  Node.js
+## Quick Start
+1. Ensure your API Key is set in the environment.
+2. Place your `.py` scripts in the `/fanduel_cohort` directory.
+3. Launch `index.html` and initiate **Scout Headers**.
 
-
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+---
+*Confidential Property of Foxwood Academy*

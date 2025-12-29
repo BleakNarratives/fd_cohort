@@ -78,7 +78,10 @@ export const VoiceController: React.FC<VoiceControllerProps> = ({ onTranscriptio
 
           const audioData = message.serverContent?.modelTurn?.parts[0]?.inlineData?.data;
           if (audioData && outCtxRef.current) {
-            const buffer = await decodeAudioData(decodeBase64(audioData), outCtxRef.current);
+            /**
+             * FIX: Use guideline-compliant audio decoding method.
+             */
+            const buffer = await decodeAudioData(decode(audioData), outCtxRef.current, 24000, 1);
             const source = outCtxRef.current.createBufferSource();
             source.buffer = buffer;
             source.connect(outCtxRef.current.destination);
@@ -110,7 +113,10 @@ export const VoiceController: React.FC<VoiceControllerProps> = ({ onTranscriptio
     const processor = ctx.createScriptProcessor(4096, 1, 1);
     processor.onaudioprocess = (e) => {
       const input = e.inputBuffer.getChannelData(0);
-      const pcm = createPcmBlob(input);
+      const pcm = createBlob(input);
+      /**
+       * FIX: Strictly rely on sessionPromise resolution for sending input.
+       */
       sessionPromiseRef.current?.then(session => {
         session.sendRealtimeInput({ media: pcm });
       });
@@ -158,34 +164,54 @@ export const VoiceController: React.FC<VoiceControllerProps> = ({ onTranscriptio
   );
 };
 
-// --- Binary & Audio Processing Utils ---
+// --- Binary & Audio Processing Utils (Follows Gemini API Guidelines) ---
 
-function decodeBase64(base64: string) {
+function decode(base64: string) {
   const binaryString = atob(base64);
-  const bytes = new Uint8Array(binaryString.length);
-  for (let i = 0; i < binaryString.length; i++) bytes[i] = binaryString.charCodeAt(i);
+  const len = binaryString.length;
+  const bytes = new Uint8Array(len);
+  for (let i = 0; i < len; i++) {
+    bytes[i] = binaryString.charCodeAt(i);
+  }
   return bytes;
 }
 
-function encodeBase64(bytes: Uint8Array) {
+function encode(bytes: Uint8Array) {
   let binary = '';
-  for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
+  const len = bytes.byteLength;
+  for (let i = 0; i < len; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
   return btoa(binary);
 }
 
-async function decodeAudioData(data: Uint8Array, ctx: AudioContext) {
+async function decodeAudioData(
+  data: Uint8Array,
+  ctx: AudioContext,
+  sampleRate: number,
+  numChannels: number,
+): Promise<AudioBuffer> {
   const dataInt16 = new Int16Array(data.buffer);
-  const buffer = ctx.createBuffer(1, dataInt16.length, 24000);
-  const channelData = buffer.getChannelData(0);
-  for (let i = 0; i < dataInt16.length; i++) channelData[i] = dataInt16[i] / 32768.0;
+  const frameCount = dataInt16.length / numChannels;
+  const buffer = ctx.createBuffer(numChannels, frameCount, sampleRate);
+
+  for (let channel = 0; channel < numChannels; channel++) {
+    const channelData = buffer.getChannelData(channel);
+    for (let i = 0; i < frameCount; i++) {
+      channelData[i] = dataInt16[i * numChannels + channel] / 32768.0;
+    }
+  }
   return buffer;
 }
 
-function createPcmBlob(data: Float32Array) {
-  const int16 = new Int16Array(data.length);
-  for (let i = 0; i < data.length; i++) int16[i] = data[i] * 32768;
+function createBlob(data: Float32Array) {
+  const l = data.length;
+  const int16 = new Int16Array(l);
+  for (let i = 0; i < l; i++) {
+    int16[i] = data[i] * 32768;
+  }
   return {
-    data: encodeBase64(new Uint8Array(int16.buffer)),
+    data: encode(new Uint8Array(int16.buffer)),
     mimeType: 'audio/pcm;rate=16000',
   };
 }
