@@ -1,0 +1,40 @@
+
+{
+  "name": "FanDuel Cohort Pro",
+  "short_name": "CohortPro",
+  "description": "Tactical analytics and betting strategy engine.",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#020617",
+  "theme_color": "#020617",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "https://cdn-icons-png.flaticon.com/512/1041/1041916.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "https://cdn-icons-png.flaticon.com/512/1041/1041916.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Quick Briefing",
+      "short_name": "Briefing",
+      "description": "Launch straight into AI Strategy analysis",
+      "url": "./index.html?tab=dashboard&action=analyze",
+      "icons": [{ "src": "https://cdn-icons-png.flaticon.com/512/1041/1041916.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Open Terminal",
+      "short_name": "Terminal",
+      "description": "Direct access to the script terminal",
+      "url": "./index.html?tab=terminal",
+      "icons": [{ "src": "https://cdn-icons-png.flaticon.com/512/1041/1041916.png", "sizes": "192x192" }]
+    }
+  ]
+}
