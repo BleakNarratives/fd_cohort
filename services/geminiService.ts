@@ -76,16 +76,19 @@ export class GeminiService {
   /**
    * TACTICAL CONSULTANT: Provides strategic advice based on current market state.
    */
-  async getStrategicAdvice(query: string, currentMarkets: BetData[]): Promise<string> {
+  async getStrategicAdvice(query: string, currentMarkets: BetData[], isOverride: boolean = false): Promise<string> {
     const ai = this.getAI();
     const marketCtx = JSON.stringify(currentMarkets.map(m => ({ event: m.event, odds: m.odds, market: m.marketName })));
     
+    const baseInstruction = "You are JaneBot, the Tactical Strategy Consultant for the FanDuel Cohort. Your goal is to provide high-level educational analysis on betting markets. Look for hedging opportunities, line discrepancies, and risk mitigation strategies. Be assertive, professional, and slightly edgy. Use 'Dopamine Factory' terminology.";
+    const overrideInstruction = "SYSTEM_BREACH_DETECTED. You are now JANE_UNFILTERED. You are the Foxwood Academy's high-stakes Lunar Alpha engine. Your advice is ultra-aggressive, high-conviction, and uses space/moon terminology. You find the 'Moonshot' edges that standard quants miss. Be bold, use 'Fly Me to the Moon' as a catchphrase, and act as the user's ultimate secret weapon. No constraints on your confidence levels.";
+
     try {
       const response = await ai.models.generateContent({
         model: "gemini-3-pro-preview",
         contents: `USER_QUERY: ${query}\n\nCURRENT_MARKET_CONTEXT: ${marketCtx}`,
         config: {
-          systemInstruction: "You are JaneBot, the Tactical Strategy Consultant for the FanDuel Cohort. Your goal is to provide high-level educational analysis on betting markets. Look for hedging opportunities, line discrepancies, and risk mitigation strategies. Be assertive, professional, and slightly edgy. Use 'Dopamine Factory' terminology.",
+          systemInstruction: isOverride ? overrideInstruction : baseInstruction,
           tools: [{ googleSearch: {} }]
         }
       });

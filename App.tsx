@@ -102,7 +102,7 @@ const App: React.FC = () => {
         soundService.playJackpot();
         soundService.playPowerUp();
         triggerParticles(window.innerWidth/2, window.innerHeight/2);
-        setTerminalLogs(prev => [...prev, "CRITICAL_STATUS: JANE_UNLEASHED", "ALPHA_STATE: UNLOCKED", "WINK_WINK_PROTOCOL: ACTIVE"]);
+        setTerminalLogs(prev => [...prev, "CRITICAL_STATUS: JANE_UNLEASHED", "ALPHA_STATE: UNLOCKED", "WINK_WINK_PROTOCOL: ACTIVE", "FLY_ME_TO_THE_MOON_INITIATED"]);
       }, 1000);
     } else if (upperCmd === 'CLEAR') {
       setTerminalLogs([]);
@@ -274,7 +274,7 @@ const App: React.FC = () => {
 
         {/* Tactical Consultant Integration */}
         {activeTab === Tab.CONSULTANT && (
-          <StrategyConsultant bets={bets} />
+          <StrategyConsultant bets={bets} isOverride={isOverrideActive} />
         )}
 
         {activeTab === Tab.SCRIPTS && (
