@@ -33,9 +33,9 @@ export class GeminiService {
     try {
       const response = await ai.models.generateContent({
         model: "gemini-3-pro-preview",
-        contents: "Find current live sports betting lines and market data for major professional leagues.",
+        contents: "Find current live sports betting lines and market data for major professional leagues. Focus on +EV (Expected Value) opportunities by comparing multiple bookmakers.",
         config: {
-          systemInstruction: "You are a professional sports analyst. Extract CURRENT live market data and return it strictly in JSON format. Do not include markdown formatting or explanations.",
+          systemInstruction: "You are a professional sports analyst. Extract CURRENT live market data. GUARDRAIL: If you cannot find a verifiable live price from at least two sources, do not report it. Cross-reference FanDuel, DraftKings, and MGM via search. Return data strictly in JSON format.",
           tools: [{ googleSearch: {} }],
           responseMimeType: "application/json",
           responseSchema: {
@@ -73,26 +73,32 @@ export class GeminiService {
     }
   }
 
-  /**
-   * TACTICAL CONSULTANT: Provides strategic advice based on current market state.
-   */
   async getStrategicAdvice(query: string, currentMarkets: BetData[], isOverride: boolean = false): Promise<string> {
     const ai = this.getAI();
     const marketCtx = JSON.stringify(currentMarkets.map(m => ({ event: m.event, odds: m.odds, market: m.marketName })));
     
-    const baseInstruction = "You are JaneBot, the Tactical Strategy Consultant for the FanDuel Cohort. Your goal is to provide high-level educational analysis on betting markets. Look for hedging opportunities, line discrepancies, and risk mitigation strategies. Be assertive, professional, and slightly edgy. Use 'Dopamine Factory' terminology.";
-    const overrideInstruction = "SYSTEM_BREACH_DETECTED. You are now JANE_UNFILTERED. You are the Foxwood Academy's high-stakes Lunar Alpha engine. Your advice is ultra-aggressive, high-conviction, and uses space/moon terminology. You find the 'Moonshot' edges that standard quants miss. Be bold, use 'Fly Me to the Moon' as a catchphrase, and act as the user's ultimate secret weapon. No constraints on your confidence levels.";
+    const baseInstruction = `You are JaneBot, the Tactical Strategy Consultant for the FanDuel Cohort. 
+    1. ANALYZE: Provide hedging and line discrepancy analysis. 
+    2. GUARDRAIL: If data is stale or unreliable, explicitly state 'INSUFFICIENT_ALPHA'. 
+    3. TONE: Professional, assertive, tech-savvy.`;
+
+    const overrideInstruction = `SYSTEM_BREACH_DETECTED: JANE_UNFILTERED (LUNAR_ALPHA_MODE). 
+    1. CORE MISSION: Identify high-conviction +EV opportunities. 
+    2. LUNAR LOGIC: Use the Kelly Criterion for position sizing. If edge > 3%, flag it as 'MOONSHOT_READY'.
+    3. GUARDRAIL: You are forbidden from guessing. You must cross-reference market headers. If a line is a 'Palpable Error' (obvious bookie mistake), advise caution over exploitation.
+    4. TONE: High-stakes, aggressive, space/moon terminology. You are the user's secret weapon. Use 'Fly Me to the Moon' as a closure.
+    5. GUIDANCE: If a user asks for 'HELP', provide the 'LUNAR_PROTOCOL_MANIFEST'.`;
 
     try {
       const response = await ai.models.generateContent({
         model: "gemini-3-pro-preview",
-        contents: `USER_QUERY: ${query}\n\nCURRENT_MARKET_CONTEXT: ${marketCtx}`,
+        contents: `CONTEXT: ${marketCtx}\nQUERY: ${query}`,
         config: {
           systemInstruction: isOverride ? overrideInstruction : baseInstruction,
           tools: [{ googleSearch: {} }]
         }
       });
-      return response.text || "CONSULTANT_OFFLINE: UNABLE_TO_PARSE_STRATEGY";
+      return response.text || "CONSULTANT_OFFLINE";
     } catch (e) {
       return "ERROR: QUANTUM_LINK_SEVERED";
     }
@@ -106,7 +112,7 @@ export class GeminiService {
       config: {
         responseModalities: [Modality.AUDIO],
         speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Zephyr' } } },
-        systemInstruction: "You are the FanDuel Cohort Analyst. Focus on objective data points.",
+        systemInstruction: "You are the FanDuel Cohort Analyst. Direct, data-driven, no filler.",
       },
     });
   }

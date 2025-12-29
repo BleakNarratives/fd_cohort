@@ -30,9 +30,10 @@ const App: React.FC = () => {
   const [syncCode, setSyncCode] = useState<string>('');
   const [isOverrideActive, setIsOverrideActive] = useState(false);
   const [terminalLogs, setTerminalLogs] = useState<string[]>([
+    'SYSTEM_BOOT: SUCCESSFUL',
     'DOPAMINE_UNIT: INITIALIZED', 
-    'INGEST_PATH: /fanduel_cohort', 
-    'STATUS: 100% NOMINAL'
+    'INGEST_PATH: /storage/emulated/0/root_2025/fanduel_cohort/', 
+    'TYPE "HELP" FOR COMMAND MANIFEST'
   ]);
 
   const [safety, setSafety] = useState<SafetySettings>({
@@ -49,12 +50,12 @@ const App: React.FC = () => {
   });
 
   const triggerParticles = (x: number, y: number) => {
-    const newParticles = Array.from({ length: 15 }).map((_, i) => ({
+    const newParticles = Array.from({ length: 25 }).map((_, i) => ({
       id: Date.now() + i,
       x,
       y,
-      tx: (Math.random() - 0.5) * 500,
-      ty: (Math.random() - 0.5) * 500,
+      tx: (Math.random() - 0.5) * 600,
+      ty: (Math.random() - 0.5) * 600,
       color: ['#3b82f6', '#d4af37', '#ffffff', '#ef4444'][Math.floor(Math.random() * 4)]
     }));
     setParticles(prev => [...prev, ...newParticles]);
@@ -69,6 +70,88 @@ const App: React.FC = () => {
     if (soundType === 'powerup') soundService.playPowerUp();
     if (soundType === 'oogah') soundService.playOogah();
     triggerParticles(e.clientX, e.clientY);
+  };
+
+  const handleTerminalCommand = (cmd: string) => {
+    const upperCmd = cmd.trim().toUpperCase();
+    const parts = upperCmd.split(' ');
+    const baseCmd = parts[0];
+
+    setTerminalLogs(prev => [...prev, `cohort@foxwood:~$ ${cmd}`]);
+    soundService.playDigitalClick();
+
+    switch (baseCmd) {
+      case 'HELP':
+        setTerminalLogs(prev => [...prev, 
+          'AVAILABLE COMMANDS:',
+          '  HELP                Display this manifest',
+          '  LS                  List files in /fanduel_cohort',
+          '  CAT [FILE]          Simulate reading script content',
+          '  SCANNERS            Check status of active market scouts',
+          '  RUN_PROB_ENGINE     Execute probability models (Kelly Criterion)',
+          '  JANE_OVERRIDE       Activate Shadow Protocol (Lunar Alpha)',
+          '  CLEAR               Purge terminal logs'
+        ]);
+        break;
+
+      case 'LS':
+        setTerminalLogs(prev => [...prev, 
+          'DIRECTORY: /storage/emulated/0/root_2025/fanduel_cohort/',
+          '  - nfl_model_v4.py',
+          '  - nba_hedger_final.py',
+          '  - live_odds_scraper.py',
+          '  - requirements.txt',
+          '  - analysis_logs/'
+        ]);
+        break;
+
+      case 'CAT':
+        if (parts[1]) {
+           setTerminalLogs(prev => [...prev, `READING ${parts[1]}...`, '...', 'CODE_PREVIEW: # Ingesting market headers...', 'LOG_SUCCESS: File parsed.']);
+        } else {
+           setTerminalLogs(prev => [...prev, 'ERROR: SPECIFY_FILE (usage: CAT nba_hedger_final.py)']);
+        }
+        break;
+
+      case 'SCANNERS':
+        setTerminalLogs(prev => [...prev, 
+          'SCANNER_STATUS:',
+          '  [LIVE] FanDuel: ACTIVE (98% Reliability)',
+          '  [LIVE] DraftKings: ACTIVE (95% Reliability)',
+          '  [LIVE] BetMGM: ACTIVE (92% Reliability)',
+          '  [CALIB] Sentiment_Engine: RUNNING'
+        ]);
+        break;
+
+      case 'RUN_PROB_ENGINE':
+        setTerminalLogs(prev => [...prev, 'INITIALIZING_KELLY_CRITERION...', 'CALCULATING_ALPHA_DRIFT...', '...', 'RESULT: High-conviction Edge detected on 2 events.']);
+        soundService.playDataCrunch();
+        break;
+
+      case 'JANE_OVERRIDE':
+        setIsOverrideActive(true);
+        soundService.playOogah();
+        setTimeout(() => {
+          soundService.playJackpot();
+          soundService.playPowerUp();
+          triggerParticles(window.innerWidth/2, window.innerHeight/2);
+          setTerminalLogs(prev => [...prev, 
+            '!!! BREACH_SUCCESSFUL !!!',
+            'JANE_UNLEASHED: LUNAR_ALPHA_ONLINE', 
+            'FLY_ME_TO_THE_MOON_INITIATED',
+            'SIGHT_RECALIBRATED: LOOKING FOR THE STARS'
+          ]);
+        }, 1000);
+        break;
+
+      case 'CLEAR':
+        setTerminalLogs([]);
+        break;
+
+      default:
+        setTerminalLogs(prev => [...prev, `ERROR: COMMAND '${baseCmd}' NOT RECOGNIZED. TYPE 'HELP' FOR GUIDANCE.`]);
+        soundService.playOogah();
+    }
   };
 
   const runScout = useCallback(async (e?: React.MouseEvent) => {
@@ -90,27 +173,6 @@ const App: React.FC = () => {
       setIsScouting(false);
     }
   }, [safety.engineMode, filters]);
-
-  const handleTerminalCommand = (cmd: string) => {
-    const upperCmd = cmd.trim().toUpperCase();
-    setTerminalLogs(prev => [...prev, `cohort@analytics:~$ ${cmd}`, `EXECUTING: ${upperCmd}...`]);
-    
-    if (upperCmd === 'JANE_OVERRIDE') {
-      setIsOverrideActive(true);
-      soundService.playOogah();
-      setTimeout(() => {
-        soundService.playJackpot();
-        soundService.playPowerUp();
-        triggerParticles(window.innerWidth/2, window.innerHeight/2);
-        setTerminalLogs(prev => [...prev, "CRITICAL_STATUS: JANE_UNLEASHED", "ALPHA_STATE: UNLOCKED", "WINK_WINK_PROTOCOL: ACTIVE", "FLY_ME_TO_THE_MOON_INITIATED"]);
-      }, 1000);
-    } else if (upperCmd === 'CLEAR') {
-      setTerminalLogs([]);
-    } else {
-      setTerminalLogs(prev => [...prev, `ERROR: COMMAND '${upperCmd}' NOT FOUND IN COHORT_CORE`]);
-      soundService.playDigitalClick();
-    }
-  };
 
   const handleTabChange = (t: Tab, e: React.MouseEvent) => {
     handleAction(e, 'click');
@@ -139,8 +201,8 @@ const App: React.FC = () => {
             '--tw-tx': `${p.tx}px`, 
             '--tw-ty': `${p.ty}px`,
             backgroundColor: p.color,
-            width: '5px', height: '5px',
-            boxShadow: `0 0 12px ${p.color}`
+            width: '6px', height: '6px',
+            boxShadow: `0 0 15px ${p.color}`
           } as any} 
         />
       ))}
@@ -186,8 +248,8 @@ const App: React.FC = () => {
         
         {/* Market Ticker */}
         <div className="flex gap-4 overflow-x-auto no-scrollbar py-2">
-           {(isOverrideActive ? ['SHADOW_ALPHA', 'JANE_LINK_HOT', 'NO_CONSTRAINTS', 'EDGE_VERIFIED'] : ['HEDGING_ACTIVE', 'SLOT_CORE_READY', 'JACKPOT_CALIBRATED', 'ALPHA_SCAN']).map((label, i) => (
-             <div key={i} className="flex-shrink-0 bg-blue-900/10 border border-blue-500/20 px-5 py-2.5 rounded-2xl flex items-center gap-3 active:bg-blue-600/20 cursor-pointer transition-all border-b-2">
+           {(isOverrideActive ? ['SHADOW_ALPHA', 'JANE_LINK_HOT', 'FLY_ME_TO_THE_MOON', 'LUNAR_EDGE'] : ['HEDGING_ACTIVE', 'SLOT_CORE_READY', 'JACKPOT_CALIBRATED', 'ALPHA_SCAN']).map((label, i) => (
+             <div key={i} className="flex-shrink-0 bg-blue-900/10 border border-blue-500/20 px-5 py-2.5 rounded-2xl flex items-center gap-3 active:bg-blue-600/20 cursor-pointer transition-all border-b-2 shadow-inner">
                 <Sparkles size={16} className="text-[#d4af37]" />
                 <span className="text-[10px] font-black text-blue-200 uppercase tracking-widest">{label}</span>
              </div>
@@ -280,15 +342,22 @@ const App: React.FC = () => {
         {activeTab === Tab.SCRIPTS && (
           <div className="space-y-7 steam-ingress">
              <Terminal logs={terminalLogs} onCommand={handleTerminalCommand} />
-             <button 
-               onClick={(e) => runScout(e)}
-               className="w-full py-10 bg-blue-600/5 border-2 border-blue-600/20 rounded-[4rem] flex flex-col items-center gap-4 group active:scale-95 transition-all shadow-xl"
-             >
-                <div className="size-20 bg-blue-600 rounded-[2rem] flex items-center justify-center shadow-[0_0_40px_rgba(59,130,246,0.5)] border border-blue-400/50">
-                  <RefreshCw size={40} className="text-white group-hover:rotate-180 transition-transform duration-700" />
-                </div>
-                <span className="text-xs font-black uppercase tracking-[0.6em] text-blue-400">INGEST_LOCAL_ALPHA</span>
-             </button>
+             <div className="grid grid-cols-2 gap-4">
+                <button 
+                  onClick={(e) => runScout(e)}
+                  className="py-8 bg-blue-600/5 border-2 border-blue-600/20 rounded-[2.5rem] flex flex-col items-center gap-4 group active:scale-95 transition-all"
+                >
+                   <RefreshCw size={24} className="text-blue-400 group-hover:rotate-180 transition-all duration-700" />
+                   <span className="text-[10px] font-black uppercase tracking-widest text-blue-400">INGEST_ALPHA</span>
+                </button>
+                <button 
+                  onClick={(e) => handleTerminalCommand('HELP')}
+                  className="py-8 bg-white/5 border-2 border-white/10 rounded-[2.5rem] flex flex-col items-center gap-4 group active:scale-95 transition-all"
+                >
+                   <SettingsIcon size={24} className="text-slate-500" />
+                   <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">TUTORIAL_MODE</span>
+                </button>
+             </div>
           </div>
         )}
 
