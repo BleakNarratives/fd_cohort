@@ -1,59 +1,106 @@
 
-import React, { useState, useEffect, useRef } from 'react';
-import { Mic, MicOff, Volume2, Loader2, Radio } from 'lucide-react';
+import React, { useState, useRef } from 'react';
+import { Mic, Radio, Loader2, AlertCircle } from 'lucide-react';
 import { geminiService } from '../services/geminiService';
 
-export const VoiceController: React.FC = () => {
+interface VoiceControllerProps {
+  onTranscription?: (text: string, isUser: boolean) => void;
+  onTriggerAnalysis?: () => void;
+}
+
+export const VoiceController: React.FC<VoiceControllerProps> = ({ onTranscription, onTriggerAnalysis }) => {
   const [isActive, setIsActive] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   
-  const audioContext = useRef<AudioContext | null>(null);
-  const nextStartTime = useRef(0);
-  const sessionPromise = useRef<Promise<any> | null>(null);
-  const streamRef = useRef<MediaStream | null>(null);
+  const outCtxRef = useRef<AudioContext | null>(null);
+  const inCtxRef = useRef<AudioContext | null>(null);
+  const nextStartTimeRef = useRef(0);
+  const activeSourcesRef = useRef<Set<AudioBufferSourceNode>>(new Set());
+  const sessionPromiseRef = useRef<Promise<any> | null>(null);
 
   const toggleVoice = async () => {
     if (isActive) {
-      setIsActive(false);
-      window.location.reload(); // Hard reset for audio stream cleanup
+      cleanup();
       return;
     }
 
     setIsConnecting(true);
+    setError(null);
+
     try {
-      // 1. Initialize Audio Contexts
       const outCtx = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
       const inCtx = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
-      audioContext.current = outCtx;
+      
+      await outCtx.resume();
+      await inCtx.resume();
+      
+      outCtxRef.current = outCtx;
+      inCtxRef.current = inCtx;
 
-      // 2. Request Mic Permissions
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      streamRef.current = stream;
 
-      // 3. Setup Live Session
-      sessionPromise.current = geminiService.connectVoice({
+      sessionPromiseRef.current = geminiService.connectVoice({
         onopen: () => {
           setIsConnecting(false);
           setIsActive(true);
           startStreamingInput(inCtx, stream);
         },
         onmessage: async (message: any) => {
+          if (message.toolCall) {
+            for (const fc of message.toolCall.functionCalls) {
+              if (fc.name === 'trigger_analysis') {
+                onTriggerAnalysis?.();
+                sessionPromiseRef.current?.then(session => {
+                  session.sendToolResponse({
+                    functionResponses: {
+                      id: fc.id,
+                      name: fc.name,
+                      response: { result: "Market analysis updated." },
+                    }
+                  });
+                });
+              }
+            }
+          }
+
+          if (message.serverContent?.outputTranscription) {
+            onTranscription?.(message.serverContent.outputTranscription.text, false);
+          } else if (message.serverContent?.inputTranscription) {
+            onTranscription?.(message.serverContent.inputTranscription.text, true);
+          }
+
+          if (message.serverContent?.interrupted) {
+            activeSourcesRef.current.forEach(s => s.stop());
+            activeSourcesRef.current.clear();
+            nextStartTimeRef.current = 0;
+          }
+
           const audioData = message.serverContent?.modelTurn?.parts[0]?.inlineData?.data;
-          if (audioData && audioContext.current) {
-            const buffer = await decodeAudioData(decode(audioData), audioContext.current);
-            const source = audioContext.current.createBufferSource();
+          if (audioData && outCtxRef.current) {
+            const buffer = await decodeAudioData(decodeBase64(audioData), outCtxRef.current);
+            const source = outCtxRef.current.createBufferSource();
             source.buffer = buffer;
-            source.connect(audioContext.current.destination);
-            const start = Math.max(nextStartTime.current, audioContext.current.currentTime);
+            source.connect(outCtxRef.current.destination);
+            
+            const start = Math.max(nextStartTimeRef.current, outCtxRef.current.currentTime);
             source.start(start);
-            nextStartTime.current = start + buffer.duration;
+            nextStartTimeRef.current = start + buffer.duration;
+            
+            activeSourcesRef.current.add(source);
+            source.onended = () => activeSourcesRef.current.delete(source);
           }
         },
-        onclose: () => setIsActive(false),
-        onerror: () => setIsActive(false)
+        onclose: () => cleanup(),
+        onerror: (e: any) => {
+          console.error("VOICE_SESSION_ERROR:", e);
+          setError("Connection failed.");
+          cleanup();
+        }
       });
     } catch (e) {
-      console.error("VOICE_CORE_FAILURE:", e);
+      console.error("VOICE_BOOT_FAILURE:", e);
+      setError("Microphone required.");
       setIsConnecting(false);
     }
   };
@@ -64,7 +111,7 @@ export const VoiceController: React.FC = () => {
     processor.onaudioprocess = (e) => {
       const input = e.inputBuffer.getChannelData(0);
       const pcm = createPcmBlob(input);
-      sessionPromise.current?.then(session => {
+      sessionPromiseRef.current?.then(session => {
         session.sendRealtimeInput({ media: pcm });
       });
     };
@@ -72,42 +119,55 @@ export const VoiceController: React.FC = () => {
     processor.connect(ctx.destination);
   };
 
+  const cleanup = () => {
+    setIsActive(false);
+    setIsConnecting(false);
+    outCtxRef.current?.close();
+    inCtxRef.current?.close();
+    sessionPromiseRef.current = null;
+  };
+
   return (
-    <div className="flex flex-col gap-2">
+    <div className="flex flex-col gap-3">
       <button 
         onClick={toggleVoice}
-        className={`w-full p-4 rounded-2xl transition-all border flex items-center justify-between font-black text-[10px] uppercase tracking-widest shadow-2xl relative overflow-hidden group ${
-          isActive ? 'bg-emerald-500 border-emerald-400 text-white' : 
-          isConnecting ? 'bg-slate-800 border-slate-700 text-slate-400' :
-          'bg-slate-900 border-slate-800 text-slate-400 hover:text-white hover:border-slate-600'
+        className={`w-full p-4 rounded-2xl transition-all border flex items-center justify-between font-bold text-[12px] uppercase tracking-wide shadow-xl relative overflow-hidden group ${
+          isActive ? 'bg-emerald-600 border-emerald-500 text-white' : 
+          isConnecting ? 'bg-slate-800 border-slate-700 text-slate-500' :
+          'bg-slate-800 border-slate-700 text-slate-400 hover:text-white hover:border-blue-500/50'
         }`}
       >
         <div className="flex items-center gap-3 relative z-10">
-          {isConnecting ? <Loader2 size={16} className="animate-spin" /> : isActive ? <Radio size={16} className="animate-pulse" /> : <Mic size={16} />}
-          <span>{isActive ? 'Live Comms Active' : isConnecting ? 'Establishing Link' : 'Tactical Audio'}</span>
+          {isConnecting ? <Loader2 size={18} className="animate-spin" /> : 
+           isActive ? <Radio size={18} className="animate-pulse" /> : <Mic size={18} />}
+          <span>{isActive ? 'Analysis Online' : isConnecting ? 'Connecting...' : 'Voice Command'}</span>
         </div>
-        {isActive && <div className="size-2 bg-white rounded-full animate-ping" />}
-        <div className="absolute inset-0 bg-white/5 opacity-0 group-hover:opacity-100 transition-opacity" />
+        {isActive && <div className="flex gap-1.5 px-2">
+          <div className="size-1.5 bg-white rounded-full animate-bounce [animation-delay:-0.3s]" />
+          <div className="size-1.5 bg-white rounded-full animate-bounce [animation-delay:-0.15s]" />
+          <div className="size-1.5 bg-white rounded-full animate-bounce" />
+        </div>}
       </button>
+      {error && <div className="text-[10px] text-red-500 font-bold uppercase flex items-center justify-center gap-1.5"><AlertCircle size={12} /> {error}</div>}
       {isActive && (
-        <p className="text-[9px] text-center font-bold text-emerald-500/50 uppercase tracking-tighter">
-          JaneBot is listening... speak your strategy queries.
+        <p className="text-[9px] text-center font-bold text-emerald-400/80 uppercase tracking-widest animate-pulse">
+          Listening for analysis request...
         </p>
       )}
     </div>
   );
 };
 
-// --- Low Level Audio Utils ---
+// --- Binary & Audio Processing Utils ---
 
-function decode(base64: string) {
+function decodeBase64(base64: string) {
   const binaryString = atob(base64);
   const bytes = new Uint8Array(binaryString.length);
   for (let i = 0; i < binaryString.length; i++) bytes[i] = binaryString.charCodeAt(i);
   return bytes;
 }
 
-function encode(bytes: Uint8Array) {
+function encodeBase64(bytes: Uint8Array) {
   let binary = '';
   for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
   return btoa(binary);
@@ -125,7 +185,7 @@ function createPcmBlob(data: Float32Array) {
   const int16 = new Int16Array(data.length);
   for (let i = 0; i < data.length; i++) int16[i] = data[i] * 32768;
   return {
-    data: encode(new Uint8Array(int16.buffer)),
+    data: encodeBase64(new Uint8Array(int16.buffer)),
     mimeType: 'audio/pcm;rate=16000',
   };
 }

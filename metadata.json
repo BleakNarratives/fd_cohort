@@ -1,8 +1,8 @@
 {
-  "name": "FanDuel Cohort Pro Dashboard",
-  "description": "A high-performance analytics suite for betting strategy optimization, featuring real-time data visualization and Gemini-powered predictive analysis.",
+  "name": "FanDuel Cohort Pro",
+  "description": "Professional betting analytics and cohort script management dashboard.",
   "requestFramePermissions": [
-    "camera",
-    "microphone"
+    "microphone",
+    "geolocation"
   ]
 }

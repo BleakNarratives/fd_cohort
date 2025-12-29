@@ -4,39 +4,23 @@ export interface BetData {
   timestamp: string;
   event: string;
   odds: number;
-  stake: number;
-  potentialReturn: number;
-  status: 'WON' | 'LOST' | 'PENDING' | 'SECURE_TRANSIT';
+  marketName: string;
+  status: 'LIVE' | 'UPCOMING' | 'CLOSED';
   type: string;
-}
-
-export interface AnalyticsSummary {
-  totalStake: number;
-  totalReturn: number;
-  winRate: number;
-  profit: number;
-  roi: number;
-}
-
-export interface SessionSettings {
-  maxSessionMinutes: number;
-  stopLossLimit: number;
-  alertsEnabled: boolean;
-  stealthMode: boolean;
-  voiceActive: boolean;
+  groundingSource?: string;
 }
 
 export enum Tab {
-  DASHBOARD = 'DASHBOARD',
-  TERMINAL = 'TERMINAL',
-  DEPLOYMENT = 'DEPLOYMENT',
+  MARKETS = 'MARKETS',
+  STRATEGY = 'STRATEGY',
+  SCRIPTS = 'SCRIPTS',
+  ACCURACY = 'ACCURACY',
   SETTINGS = 'SETTINGS',
-  VAULT = 'VAULT'
+  RESPONSIBLE_PLAY = 'RESPONSIBLE_PLAY'
 }
 
-export interface SecurityEvent {
-  id: string;
-  type: 'ENCRYPTION' | 'SYNC' | 'WIPE' | 'ACCESS';
-  timestamp: string;
-  status: 'SUCCESS' | 'WARNING';
+export interface SafetySettings {
+  sessionWarnings: boolean;
+  warningInterval: number; // in minutes
+  maxSessionTime: number; // in minutes
 }

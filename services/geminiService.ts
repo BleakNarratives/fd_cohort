@@ -1,5 +1,5 @@
 
-import { GoogleGenAI, Modality } from "@google/genai";
+import { GoogleGenAI, Modality, Type } from "@google/genai";
 import { BetData } from "../types";
 
 export class GeminiService {
@@ -8,56 +8,57 @@ export class GeminiService {
   }
 
   /**
-   * Fetches real-time market data using Gemini Search Grounding.
-   * Includes aggressive retry logic and data sanitization.
+   * SCOUT ENGINE: Uses Google Search grounding to parse live web headers for FanDuel markets.
    */
-  async fetchRealTimeMarkets() {
+  async scoutLiveMarkets(): Promise<{ data: BetData[], sources: any[] }> {
     const ai = this.getAI();
     try {
       const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
-        contents: "FETCH_ACTIVE_MARKETS: Access current FanDuel data for major sporting events. Return 5 events with current odds, market types, and high-precision timestamps. OUTPUT_FORMAT: JSON ARRAY ONLY.",
+        model: "gemini-3-pro-preview",
+        contents: `SYSTEM_PROMPT: You are a professional sports betting analyst. 
+        TASK: Extract CURRENT live FanDuel betting lines for major professional sports (NFL, NBA, MLB, NHL, Soccer).
+        REQUIRED DATA: Event Name, Market Type (e.g., Spread), Odds (American format), and Grounding URL.
+        FORMAT: Strictly JSON array.
+        NO HALUCINATIONS: If no live data is found, return an empty array.`,
         config: {
           tools: [{ googleSearch: {} }],
-        },
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.ARRAY,
+            items: {
+              type: Type.OBJECT,
+              properties: {
+                id: { type: Type.STRING },
+                event: { type: Type.STRING },
+                marketName: { type: Type.STRING },
+                odds: { type: Type.NUMBER },
+                status: { type: Type.STRING },
+                type: { type: Type.STRING },
+                groundingSource: { type: Type.STRING }
+              }
+            }
+          }
+        }
       });
-
-      const raw = response.text || '[]';
-      const clean = this.sanitizeJsonString(raw);
+      
+      const rawText = response.text || '[]';
+      const rawData = JSON.parse(rawText);
+      const sources = response.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
+      
       return {
-        data: Array.isArray(clean) ? clean : [],
-        sources: response.candidates?.[0]?.groundingMetadata?.groundingChunks || []
+        data: rawData.map((d: any, i: number) => ({
+          ...d,
+          id: d.id || `scout-${Date.now()}-${i}`,
+          status: 'LIVE'
+        })),
+        sources
       };
-    } catch (error) {
-      console.error("SECURE_SYNC_CRITICAL:", error);
+    } catch (e) {
+      console.error("MARKET_SCOUT_ERROR:", e);
       return { data: [], sources: [] };
     }
   }
 
-  /**
-   * Deep strategy analysis using Gemini Pro Thinking.
-   */
-  async analyzeStrategy(data: BetData[], context: string) {
-    const ai = this.getAI();
-    try {
-      const sanitizedData = data.map(b => ({ ...b, event: b.event.replace(/[0-9]/g, 'X') })); // Masking IDs
-      const response = await ai.models.generateContent({
-        model: "gemini-3-pro-preview",
-        contents: `STRATEGY_BRIEFING: ${context}\nMARKET_COHORT: ${JSON.stringify(sanitizedData)}`,
-        config: {
-          systemInstruction: "You are JaneBot. Provide high-density, tactical betting insights. Focus on arbitrage opportunities and ROI variance. Keep it brief and aggressive.",
-          thinkingConfig: { thinkingBudget: 24576 }
-        }
-      });
-      return response.text || "ANALYSIS_BUFFER_EMPTY";
-    } catch (e) {
-      return "ENCRYPTION_OVERHEAD_TIMEOUT: Analysis deferred to local engine.";
-    }
-  }
-
-  /**
-   * Establishes a bidirectional Live API session for voice-to-voice strategy.
-   */
   async connectVoice(callbacks: any) {
     const ai = this.getAI();
     return ai.live.connect({
@@ -65,21 +66,10 @@ export class GeminiService {
       callbacks,
       config: {
         responseModalities: [Modality.AUDIO],
-        speechConfig: {
-          voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Kore' } },
-        },
-        systemInstruction: 'You are the tactical voice of the FanDuel Cohort. Listen to the users betting queries and provide aggressive, brief strategy responses.',
+        speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Zephyr' } } },
+        systemInstruction: "You are the FanDuel Cohort Analyst. Your role is to provide cold, clinical data analysis of betting markets and strategy performance. Additionally, you must be prepared to provide information on responsible gaming resources if asked. Be direct, accurate, and safety-conscious. Do not engage in personas or roleplay.",
       },
     });
-  }
-
-  private sanitizeJsonString(str: string): any[] {
-    try {
-      const match = str.match(/\[.*\]/s);
-      return JSON.parse(match ? match[0] : str);
-    } catch {
-      return [];
-    }
   }
 }
 
