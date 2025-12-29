@@ -28,6 +28,12 @@ const App: React.FC = () => {
   const [isScouting, setIsScouting] = useState(false);
   const [particles, setParticles] = useState<{id: number, x: number, y: number, tx: number, ty: number, color: string}[]>([]);
   const [syncCode, setSyncCode] = useState<string>('');
+  const [isOverrideActive, setIsOverrideActive] = useState(false);
+  const [terminalLogs, setTerminalLogs] = useState<string[]>([
+    'DOPAMINE_UNIT: INITIALIZED', 
+    'INGEST_PATH: /fanduel_cohort', 
+    'STATUS: 100% NOMINAL'
+  ]);
 
   const [safety, setSafety] = useState<SafetySettings>({
     sessionWarnings: true,
@@ -57,10 +63,11 @@ const App: React.FC = () => {
     }, 1100);
   };
 
-  const handleAction = (e: React.MouseEvent, soundType: 'click' | 'jackpot' | 'powerup' = 'click') => {
+  const handleAction = (e: React.MouseEvent | { clientX: number, clientY: number }, soundType: 'click' | 'jackpot' | 'powerup' | 'oogah' = 'click') => {
     if (soundType === 'click') soundService.playDigitalClick();
     if (soundType === 'jackpot') soundService.playJackpot();
     if (soundType === 'powerup') soundService.playPowerUp();
+    if (soundType === 'oogah') soundService.playOogah();
     triggerParticles(e.clientX, e.clientY);
   };
 
@@ -84,6 +91,27 @@ const App: React.FC = () => {
     }
   }, [safety.engineMode, filters]);
 
+  const handleTerminalCommand = (cmd: string) => {
+    const upperCmd = cmd.trim().toUpperCase();
+    setTerminalLogs(prev => [...prev, `cohort@analytics:~$ ${cmd}`, `EXECUTING: ${upperCmd}...`]);
+    
+    if (upperCmd === 'JANE_OVERRIDE') {
+      setIsOverrideActive(true);
+      soundService.playOogah();
+      setTimeout(() => {
+        soundService.playJackpot();
+        soundService.playPowerUp();
+        triggerParticles(window.innerWidth/2, window.innerHeight/2);
+        setTerminalLogs(prev => [...prev, "CRITICAL_STATUS: JANE_UNLEASHED", "ALPHA_STATE: UNLOCKED", "WINK_WINK_PROTOCOL: ACTIVE"]);
+      }, 1000);
+    } else if (upperCmd === 'CLEAR') {
+      setTerminalLogs([]);
+    } else {
+      setTerminalLogs(prev => [...prev, `ERROR: COMMAND '${upperCmd}' NOT FOUND IN COHORT_CORE`]);
+      soundService.playDigitalClick();
+    }
+  };
+
   const handleTabChange = (t: Tab, e: React.MouseEvent) => {
     handleAction(e, 'click');
     setActiveTab(t);
@@ -98,7 +126,7 @@ const App: React.FC = () => {
   if (showExit) return <FoxwoodIntro isExit onComplete={() => window.location.reload()} />;
 
   return (
-    <div id="app-container" className="h-full w-full flex flex-col relative z-10 animate-app-reveal">
+    <div id="app-container" className={`h-full w-full flex flex-col relative z-10 animate-app-reveal ${isOverrideActive ? 'override-glitch' : ''}`}>
       
       {/* Particle Overlay */}
       {particles.map(p => (
@@ -121,16 +149,16 @@ const App: React.FC = () => {
       <header className="px-6 py-5 border-b border-blue-500/30 flex justify-between items-center bg-black/60 backdrop-blur-3xl sticky top-0 z-[100] shadow-[0_5px_30px_rgba(0,0,0,0.5)]">
         <div className="flex items-center gap-4">
           <div 
-            className="size-11 bg-gradient-to-tr from-blue-600 via-blue-400 to-blue-700 rounded-2xl flex items-center justify-center shadow-[0_0_25px_rgba(59,130,246,0.6)] border border-blue-300/40 cursor-pointer active:scale-90 transition-transform"
+            className={`size-11 bg-gradient-to-tr ${isOverrideActive ? 'from-amber-600 via-amber-400 to-yellow-600 shadow-[0_0_30px_rgba(212,175,55,0.8)]' : 'from-blue-600 via-blue-400 to-blue-700 shadow-[0_0_25px_rgba(59,130,246,0.6)]'} rounded-2xl flex items-center justify-center border border-blue-300/40 cursor-pointer active:scale-90 transition-transform`}
             onMouseEnter={() => soundService.playHover()}
             onClick={(e) => handleAction(e, 'powerup')}
           >
             <BarChart3 size={24} className="text-white drop-shadow-[0_0_5px_white]" />
           </div>
           <div>
-            <h1 className="text-sm font-black tracking-tighter neon-text">COHORT_PRO <span className="text-[#d4af37] animate-pulse">4.5</span></h1>
+            <h1 className="text-sm font-black tracking-tighter neon-text">{isOverrideActive ? 'JANE_UNFILTERED' : 'COHORT_PRO'} <span className="text-[#d4af37] animate-pulse">4.5</span></h1>
             <div className="text-[8px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-1">
-               <ShieldCheck size={10} className="text-emerald-500" /> CASINO_GRADE_SECURE
+               <ShieldCheck size={10} className="text-emerald-500" /> {isOverrideActive ? 'QUANTUM_ENCRYPTED' : 'CASINO_GRADE_SECURE'}
             </div>
           </div>
         </div>
@@ -158,7 +186,7 @@ const App: React.FC = () => {
         
         {/* Market Ticker */}
         <div className="flex gap-4 overflow-x-auto no-scrollbar py-2">
-           {['HEDGING_ACTIVE', 'SLOT_CORE_READY', 'JACKPOT_CALIBRATED', 'ALPHA_SCAN'].map((label, i) => (
+           {(isOverrideActive ? ['SHADOW_ALPHA', 'JANE_LINK_HOT', 'NO_CONSTRAINTS', 'EDGE_VERIFIED'] : ['HEDGING_ACTIVE', 'SLOT_CORE_READY', 'JACKPOT_CALIBRATED', 'ALPHA_SCAN']).map((label, i) => (
              <div key={i} className="flex-shrink-0 bg-blue-900/10 border border-blue-500/20 px-5 py-2.5 rounded-2xl flex items-center gap-3 active:bg-blue-600/20 cursor-pointer transition-all border-b-2">
                 <Sparkles size={16} className="text-[#d4af37]" />
                 <span className="text-[10px] font-black text-blue-200 uppercase tracking-widest">{label}</span>
@@ -185,7 +213,7 @@ const App: React.FC = () => {
                   </div>
                </div>
                <div className="h-3 bg-black rounded-full border border-blue-500/10 p-1">
-                  <div className="h-full w-[70%] bg-gradient-to-r from-blue-900 via-blue-500 to-white rounded-full shadow-[0_0_15px_rgba(59,130,246,0.8)]" />
+                  <div className={`h-full w-[70%] bg-gradient-to-r ${isOverrideActive ? 'from-amber-900 via-amber-500 to-white' : 'from-blue-900 via-blue-500 to-white'} rounded-full shadow-[0_0_15px_rgba(59,130,246,0.8)]`} />
                </div>
                <div className="grid grid-cols-3 gap-3">
                   {['STABLE', 'SCALABLE', 'RISKY'].map(lvl => (
@@ -241,21 +269,6 @@ const App: React.FC = () => {
                 </div>
               ))}
             </div>
-
-            {sources.length > 0 && (
-              <div className="bg-black/40 border border-blue-500/20 p-7 rounded-[3rem] space-y-5">
-                <h5 className="text-[10px] font-black text-blue-400 uppercase tracking-[0.3em] flex items-center gap-2"><Globe size={14}/> Verified Market Data</h5>
-                <div className="flex flex-wrap gap-3">
-                  {sources.map((s, i) => (
-                    s.web && (
-                      <a key={i} href={s.web.uri} target="_blank" rel="noreferrer" className="px-5 py-2.5 bg-slate-900 border border-white/5 rounded-2xl text-[10px] font-bold text-slate-400 hover:text-blue-400 hover:border-blue-500/40 transition-all flex items-center gap-2">
-                        <Link2 size={14} /> {s.web.title || "Market Log"}
-                      </a>
-                    )
-                  ))}
-                </div>
-              </div>
-            )}
           </div>
         )}
 
@@ -266,7 +279,7 @@ const App: React.FC = () => {
 
         {activeTab === Tab.SCRIPTS && (
           <div className="space-y-7 steam-ingress">
-             <Terminal logs={['DOPAMINE_UNIT: INITIALIZED', 'INGEST_PATH: /fanduel_cohort', 'STATUS: 100% NOMINAL']} onCommand={() => soundService.playDigitalClick()} />
+             <Terminal logs={terminalLogs} onCommand={handleTerminalCommand} />
              <button 
                onClick={(e) => runScout(e)}
                className="w-full py-10 bg-blue-600/5 border-2 border-blue-600/20 rounded-[4rem] flex flex-col items-center gap-4 group active:scale-95 transition-all shadow-xl"
@@ -365,8 +378,21 @@ const App: React.FC = () => {
           0% { transform: scale(0.95); opacity: 0; filter: blur(10px); }
           100% { transform: scale(1); opacity: 1; filter: blur(0); }
         }
+        @keyframes glitch-anim {
+          0% { filter: hue-rotate(0deg) contrast(1); transform: translate(0); }
+          2% { filter: hue-rotate(180deg) contrast(2); transform: translate(5px, -5px); }
+          4% { filter: hue-rotate(0deg) contrast(1); transform: translate(0); }
+        }
         .animate-thump { animation: thump 1.5s infinite ease-in-out; }
         .animate-app-reveal { animation: app-reveal 1s cubic-bezier(0.23, 1, 0.32, 1) forwards; }
+        .override-glitch {
+           animation: glitch-anim 5s infinite;
+           border: 2px solid #d4af37 !important;
+        }
+        .override-glitch .neon-text {
+           color: #d4af37 !important;
+           text-shadow: 0 0 20px #d4af37;
+        }
       `}</style>
     </div>
   );
