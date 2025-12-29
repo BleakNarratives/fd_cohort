@@ -14,11 +14,11 @@ export interface BetData {
 export enum Tab {
   MARKETS = 'MARKETS',
   SCRIPTS = 'SCRIPTS',
+  CONSULTANT = 'CONSULTANT',
   SETTINGS = 'SETTINGS',
   PITCH = 'PITCH',
   DOCS = 'DOCS',
-  SAFETY = 'SAFETY',
-  CALENDAR = 'CALENDAR'
+  SAFETY = 'SAFETY'
 }
 
 export enum EngineMode {

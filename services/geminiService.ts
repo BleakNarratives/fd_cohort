@@ -7,9 +7,6 @@ export class GeminiService {
     return new GoogleGenAI({ apiKey: process.env.API_KEY });
   }
 
-  /**
-   * MOCK GENERATOR: Simulates local script output from /fanduel_cohort
-   */
   private getLocalMockData(): BetData[] {
     const sports = ['NFL', 'NBA', 'MLB', 'NHL', 'UFC'];
     const markets = ['Moneyline', 'Spread', 'Total O/U', 'Player Prop'];
@@ -25,12 +22,8 @@ export class GeminiService {
     }));
   }
 
-  /**
-   * SCOUT ENGINE: Handles both Live Gemini and Local Script simulation.
-   */
   async scoutLiveMarkets(mode: EngineMode = EngineMode.LIVE): Promise<{ data: BetData[], sources: any[], error?: string }> {
     if (mode === EngineMode.LOCAL) {
-      // Zero API calls, instant response from "local scripts"
       return new Promise((resolve) => {
         setTimeout(() => resolve({ data: this.getLocalMockData(), sources: [] }), 800);
       });
@@ -38,9 +31,6 @@ export class GeminiService {
 
     const ai = this.getAI();
     try {
-      /**
-       * FIX: Move system instruction to correct config property as per @google/genai guidelines.
-       */
       const response = await ai.models.generateContent({
         model: "gemini-3-pro-preview",
         contents: "Find current live sports betting lines and market data for major professional leagues.",
@@ -67,13 +57,7 @@ export class GeminiService {
       });
       
       const rawText = response.text || '[]';
-      let rawData = [];
-      try {
-        rawData = JSON.parse(rawText.replace(/```json|```/gi, '').trim());
-      } catch (e) {
-        console.warn("JSON_PARSE_FAILURE: Model did not return valid JSON. Falling back to empty array.");
-      }
-      
+      let rawData = JSON.parse(rawText.replace(/```json|```/gi, '').trim());
       const sources = response.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
       
       return {
@@ -85,11 +69,29 @@ export class GeminiService {
         sources
       };
     } catch (e: any) {
-      console.error("MARKET_SCOUT_ERROR:", e);
-      if (e.message?.includes('429') || e.status === 429) {
-        return { data: [], sources: [], error: "429" };
-      }
       return { data: [], sources: [], error: "CONNECTION_FAILURE" };
+    }
+  }
+
+  /**
+   * TACTICAL CONSULTANT: Provides strategic advice based on current market state.
+   */
+  async getStrategicAdvice(query: string, currentMarkets: BetData[]): Promise<string> {
+    const ai = this.getAI();
+    const marketCtx = JSON.stringify(currentMarkets.map(m => ({ event: m.event, odds: m.odds, market: m.marketName })));
+    
+    try {
+      const response = await ai.models.generateContent({
+        model: "gemini-3-pro-preview",
+        contents: `USER_QUERY: ${query}\n\nCURRENT_MARKET_CONTEXT: ${marketCtx}`,
+        config: {
+          systemInstruction: "You are JaneBot, the Tactical Strategy Consultant for the FanDuel Cohort. Your goal is to provide high-level educational analysis on betting markets. Look for hedging opportunities, line discrepancies, and risk mitigation strategies. Be assertive, professional, and slightly edgy. Use 'Dopamine Factory' terminology.",
+          tools: [{ googleSearch: {} }]
+        }
+      });
+      return response.text || "CONSULTANT_OFFLINE: UNABLE_TO_PARSE_STRATEGY";
+    } catch (e) {
+      return "ERROR: QUANTUM_LINK_SEVERED";
     }
   }
 

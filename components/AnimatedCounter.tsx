@@ -7,25 +7,30 @@ interface AnimatedCounterProps {
   duration?: number;
 }
 
-export const AnimatedCounter: React.FC<AnimatedCounterProps> = ({ value, prefix = "", duration = 1000 }) => {
+export const AnimatedCounter: React.FC<AnimatedCounterProps> = ({ value, prefix = "", duration = 1200 }) => {
   const [displayValue, setDisplayValue] = useState(0);
 
   useEffect(() => {
-    let start = 0;
-    const end = value;
-    if (start === end) return;
+    let startTimestamp: number | null = null;
+    const startValue = displayValue;
+    const endValue = value;
 
-    let totalMiliseconds = duration;
-    let incrementTime = (totalMiliseconds / end) * 5;
+    if (startValue === endValue) return;
 
-    let timer = setInterval(() => {
-      start += 1;
-      setDisplayValue(start);
-      if (start >= end) clearInterval(timer);
-    }, incrementTime);
+    const step = (timestamp: number) => {
+      if (!startTimestamp) startTimestamp = timestamp;
+      const progress = Math.min((timestamp - startTimestamp) / duration, 1);
+      const current = Math.floor(progress * (endValue - startValue) + startValue);
+      
+      setDisplayValue(current);
+      
+      if (progress < 1) {
+        window.requestAnimationFrame(step);
+      }
+    };
 
-    return () => clearInterval(timer);
+    window.requestAnimationFrame(step);
   }, [value, duration]);
 
-  return <span>{prefix}{displayValue}</span>;
+  return <span className="font-mono">{prefix}{displayValue.toLocaleString()}</span>;
 };
