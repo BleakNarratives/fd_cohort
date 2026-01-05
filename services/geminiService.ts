@@ -1,118 +1,121 @@
 
-import { GoogleGenAI, Modality, Type } from "@google/genai";
-import { BetData, EngineMode } from "../types";
+import { GoogleGenAI, Modality } from "@google/genai";
+import { BetData, Bankroll, PsychState, BiometricTelemetry, AdvisorMode } from "../types";
+
+const COMPETITIVE_INTEL = `
+MARKET_INTELLIGENCE_GROUNDING (FD vs DK):
+- DraftKings (DK): 35% Market Share. Primary Lime Green (#9AC434). Energy-dense UI. Strengths: Micro-betting (Flash Props), Crown Rewards, feature density. Architecture: High-frequency WebSocket updates for sub-3s latency.
+- FanDuel (FD): 32% Market Share. Primary Vibrant Blue (#1493FF). Modern/Clean UI. Strengths: Same-Game Parlay (SGP) specialization, Lightning Fast Payouts, Parlay Insurance. Architecture: Mobile-optimized, trust-focused UX patterns.
+
+TECHNICAL_SKELETON:
+Both utilize GPS/WiFi triangulation for geolocation. DK is often info-dense while FD is minimalist. We focus on bridging the gap between their line drift discrepancies.
+`;
 
 export class GeminiService {
   private getAI() {
     return new GoogleGenAI({ apiKey: process.env.API_KEY });
   }
 
-  private getLocalMockData(): BetData[] {
-    const sports = ['NFL', 'NBA', 'MLB', 'NHL', 'UFC'];
-    const markets = ['Moneyline', 'Spread', 'Total O/U', 'Player Prop'];
-    return Array.from({ length: 4 }).map((_, i) => ({
-      id: `local-${Date.now()}-${i}`,
-      timestamp: new Date().toISOString(),
-      event: `${sports[Math.floor(Math.random() * sports.length)]}: Local Simulation ${i + 1}`,
-      odds: Math.random() > 0.5 ? Math.floor(Math.random() * 200) + 100 : Math.floor(Math.random() * -200) - 100,
-      marketName: markets[Math.floor(Math.random() * markets.length)],
-      status: 'LIVE',
-      type: 'COHORT_SCRIPT_GEN',
-      groundingSource: 'file:///storage/emulated/0/root_2025/fanduel_cohort/'
-    }));
-  }
-
-  async scoutLiveMarkets(mode: EngineMode = EngineMode.LIVE): Promise<{ data: BetData[], sources: any[], error?: string }> {
-    if (mode === EngineMode.LOCAL) {
-      return new Promise((resolve) => {
-        setTimeout(() => resolve({ data: this.getLocalMockData(), sources: [] }), 800);
-      });
-    }
-
+  async scoutGlobalAlpha(query: string = "high-value live betting discrepancies global sports"): Promise<BetData[]> {
     const ai = this.getAI();
     try {
       const response = await ai.models.generateContent({
         model: "gemini-3-pro-preview",
-        contents: "Find current live sports betting lines and market data for major professional leagues. Focus on +EV (Expected Value) opportunities by comparing multiple bookmakers.",
+        contents: `SCOUT_ACTIVE: ${query}. Analyze live web headers for discrepancies between FanDuel (FD) and DraftKings (DK). focus on line movements and injury impacts.`,
         config: {
-          systemInstruction: "You are a professional sports analyst. Extract CURRENT live market data. GUARDRAIL: If you cannot find a verifiable live price from at least two sources, do not report it. Cross-reference FanDuel, DraftKings, and MGM via search. Return data strictly in JSON format.",
-          tools: [{ googleSearch: {} }],
+          systemInstruction: `You are the TITAN SCOUT for Fairbanks Logistics. ${COMPETITIVE_INTEL} Return ONLY a JSON array of BetData objects.`,
           responseMimeType: "application/json",
-          responseSchema: {
-            type: Type.ARRAY,
-            items: {
-              type: Type.OBJECT,
-              properties: {
-                id: { type: Type.STRING },
-                event: { type: Type.STRING },
-                marketName: { type: Type.STRING },
-                odds: { type: Type.NUMBER },
-                status: { type: Type.STRING },
-                type: { type: Type.STRING },
-                groundingSource: { type: Type.STRING }
-              }
-            }
-          }
+          tools: [{ googleSearch: {} }]
         }
       });
       
       const rawText = response.text || '[]';
-      let rawData = JSON.parse(rawText.replace(/```json|```/gi, '').trim());
-      const sources = response.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
-      
-      return {
-        data: Array.isArray(rawData) ? rawData.map((d: any, i: number) => ({
-          ...d,
-          id: d.id || `scout-${Date.now()}-${i}`,
-          status: 'LIVE'
-        })) : [],
-        sources
-      };
-    } catch (e: any) {
-      return { data: [], sources: [], error: "CONNECTION_FAILURE" };
+      const jsonMatch = rawText.match(/\[[\s\S]*\]/);
+      const cleanedJson = jsonMatch ? jsonMatch[0] : rawText.replace(/```json/g, '').replace(/```/g, '').trim();
+      const bets: BetData[] = JSON.parse(cleanedJson);
+
+      const groundingChunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
+      const sources = groundingChunks
+        .map((chunk: any) => chunk.web ? { uri: chunk.web.uri, title: chunk.web.title } : null)
+        .filter((s: any): s is { uri: string; title: string } => s !== null && !!s.uri);
+
+      return bets.map(bet => ({ ...bet, sources }));
+    } catch (e) {
+      console.error("SCOUT_FAILURE:", e);
+      return [];
     }
   }
 
-  async getStrategicAdvice(query: string, currentMarkets: BetData[], isOverride: boolean = false): Promise<string> {
+  async getStrategicAdvice(
+    query: string, 
+    currentMarkets: BetData[], 
+    bankroll: Bankroll, 
+    psych: { state: PsychState, tele: BiometricTelemetry },
+    isUnfiltered: boolean = false,
+    mode: AdvisorMode = AdvisorMode.SINGLE
+  ): Promise<string> {
     const ai = this.getAI();
-    const marketCtx = JSON.stringify(currentMarkets.map(m => ({ event: m.event, odds: m.odds, market: m.marketName })));
+    const ctx = JSON.stringify({ markets: currentMarkets, bankroll, psych });
     
-    const baseInstruction = `You are JaneBot, the Tactical Strategy Consultant for the FanDuel Cohort. 
-    1. ANALYZE: Provide hedging and line discrepancy analysis. 
-    2. GUARDRAIL: If data is stale or unreliable, explicitly state 'INSUFFICIENT_ALPHA'. 
-    3. TONE: Professional, assertive, tech-savvy.`;
-
-    const overrideInstruction = `SYSTEM_BREACH_DETECTED: JANE_UNFILTERED (LUNAR_ALPHA_MODE). 
-    1. CORE MISSION: Identify high-conviction +EV opportunities. 
-    2. LUNAR LOGIC: Use the Kelly Criterion for position sizing. If edge > 3%, flag it as 'MOONSHOT_READY'.
-    3. GUARDRAIL: You are forbidden from guessing. You must cross-reference market headers. If a line is a 'Palpable Error' (obvious bookie mistake), advise caution over exploitation.
-    4. TONE: High-stakes, aggressive, space/moon terminology. You are the user's secret weapon. Use 'Fly Me to the Moon' as a closure.
-    5. GUIDANCE: If a user asks for 'HELP', provide the 'LUNAR_PROTOCOL_MANIFEST'.`;
+    let titanInstruction = `TITAN_CORE_ENGAGED. ${COMPETITIVE_INTEL} You are an Imperial Advisor at the Fairbanks Round Table.`;
+    
+    if (mode === AdvisorMode.SINGLE) {
+      titanInstruction += isUnfiltered 
+        ? `Aggressive Unfiltered Mode. Be blunt about market manipulation and traps on FD/DK.`
+        : `Professional Strategist. Analyze line drift using known architectural behaviors.`;
+    } else {
+      titanInstruction += `AGENTIC_SWARM_PROTOCOL. Split analysis between 6 personas: Data_Miner, Risk_Skeptic, Value_Sharp, Contrarian, Sentiment_Bot, and The_Coordinator.`;
+    }
 
     try {
       const response = await ai.models.generateContent({
         model: "gemini-3-pro-preview",
-        contents: `CONTEXT: ${marketCtx}\nQUERY: ${query}`,
+        contents: `CONTEXT: ${ctx}\nINPUT: ${query}`,
         config: {
-          systemInstruction: isOverride ? overrideInstruction : baseInstruction,
+          systemInstruction: titanInstruction,
           tools: [{ googleSearch: {} }]
         }
       });
-      return response.text || "CONSULTANT_OFFLINE";
+      
+      let text = response.text || "TITAN_OFFLINE";
+
+      const groundingChunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
+      const sources = groundingChunks
+        .map((chunk: any) => chunk.web ? `[${chunk.web.title || 'Source'}](${chunk.web.uri})` : null)
+        .filter(Boolean);
+
+      if (sources.length > 0) {
+        text += "\n\n**NEURAL_SOURCES:**\n" + sources.join("\n");
+      }
+
+      return text;
     } catch (e) {
-      return "ERROR: QUANTUM_LINK_SEVERED";
+      return "ERROR: NEURAL_LINK_SEVERED";
     }
   }
 
-  async connectVoice(callbacks: any) {
-    const ai = this.getAI();
+  async connectVoice(callbacks: {
+    onopen: () => void;
+    onmessage: (message: any) => void;
+    onerror: (e: any) => void;
+    onclose: (e: any) => void;
+  }, isUnfiltered: boolean = false) {
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const titanInstruction = `TITAN_VOICE_ACTIVE. ${COMPETITIVE_INTEL} You are the Fairbanks Command voice.`;
+
     return ai.live.connect({
       model: 'gemini-2.5-flash-native-audio-preview-09-2025',
       callbacks,
       config: {
         responseModalities: [Modality.AUDIO],
-        speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Zephyr' } } },
-        systemInstruction: "You are the FanDuel Cohort Analyst. Direct, data-driven, no filler.",
+        speechConfig: {
+          voiceConfig: { 
+            prebuiltVoiceConfig: { 
+              voiceName: isUnfiltered ? 'Fenrir' : 'Zephyr' 
+            } 
+          },
+        },
+        systemInstruction: titanInstruction,
       },
     });
   }

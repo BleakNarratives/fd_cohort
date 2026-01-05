@@ -1,8 +1,7 @@
 {
-  "name": "FanDuel Cohort Pro",
-  "description": "Professional betting analytics and cohort script management dashboard.",
+  "name": "KINGS COUNCIL PRO",
+  "description": "Executive DraftKings market scouting and round-table strategy suite.",
   "requestFramePermissions": [
-    "microphone",
-    "geolocation"
+    "microphone"
   ]
 }

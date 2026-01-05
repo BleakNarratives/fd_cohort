@@ -1,468 +1,189 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { 
-  BarChart3, RefreshCw, Database, Globe, Link2, 
-  Terminal as TerminalIcon, Settings as SettingsIcon, LayoutDashboard, 
-  Activity, ShieldCheck, HeartHandshake, Presentation, 
-  Zap, Bookmark, Calendar, Wallet, Smartphone, Laptop, Filters, Sparkles,
-  MessageSquare
+  RefreshCw, LayoutDashboard, Activity, Zap, Shield, Target, ShieldCheck, 
+  Terminal as TerminalIcon, Link2, Crown, TrendingUp, Cpu, 
+  Database, HardDrive, Smartphone, Radio, Settings, AlertTriangle,
+  Coins, Spade, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, Menu, FolderOpen,
+  ExternalLink, Club, Heart, Diamond, Anchor, Sword, Info
 } from 'lucide-react';
-import { BetData, Tab, SafetySettings, EngineMode, FilterState } from './types';
+import { BetData, Tab, PsychState, BiometricTelemetry, Brand } from './types';
 import { geminiService } from './services/geminiService';
 import { soundService } from './services/soundService';
-import { FoxwoodIntro } from './components/FoxwoodIntro';
+import { KingsCouncilIntro } from './components/KingsCouncilIntro';
+import { FairbanksTitleCard } from './components/FairbanksTitleCard';
+import { WarningOverlay } from './components/WarningOverlay';
+import { KnowledgeBase } from './components/KnowledgeBase';
 import Terminal from './components/Terminal';
 import StatsCard from './components/StatsCard';
-import { PitchDeck } from './components/PitchDeck';
-import { Documentation } from './components/Documentation';
-import { AnimatedCounter } from './components/AnimatedCounter';
 import { StrategyConsultant } from './components/StrategyConsultant';
+import { MarketIntel } from './components/MarketIntel';
 
 const App: React.FC = () => {
-  const [showIntro, setShowIntro] = useState(true);
-  const [showExit, setShowExit] = useState(false);
-  const [activeTab, setActiveTab] = useState<Tab>(Tab.MARKETS);
+  const [bootState, setBootState] = useState<'FAIRBANKS_INTRO' | 'WARNING' | 'KINGS_INTRO' | 'SWIPE_TRANSITION' | 'READY' | 'FAIRBANKS_OUTRO'>('FAIRBANKS_INTRO');
+  const [currentBrand, setCurrentBrand] = useState<Brand>(Brand.KINGS_COUNCIL);
+  const [activeTab, setActiveTab] = useState<Tab>(Tab.ALPHA_FLOW);
+  const [showSidePanel, setShowSidePanel] = useState<null | 'LEFT' | 'RIGHT' | 'TOP' | 'BOTTOM'>(null);
+  
   const [bets, setBets] = useState<BetData[]>([]);
-  const [sources, setSources] = useState<any[]>([]);
-  const [bookmarks, setBookmarks] = useState<string[]>([]);
-  const [isScouting, setIsScouting] = useState(false);
-  const [particles, setParticles] = useState<{id: number, x: number, y: number, tx: number, ty: number, color: string}[]>([]);
-  const [syncCode, setSyncCode] = useState<string>('');
-  const [isOverrideActive, setIsOverrideActive] = useState(false);
-  const [terminalLogs, setTerminalLogs] = useState<string[]>([
-    'SYSTEM_BOOT: SUCCESSFUL',
-    'DOPAMINE_UNIT: INITIALIZED', 
-    'INGEST_PATH: /storage/emulated/0/root_2025/fanduel_cohort/', 
-    'TYPE "HELP" FOR COMMAND MANIFEST'
-  ]);
+  const [isScraping, setIsScraping] = useState(false);
+  const [terminalLogs, setTerminalLogs] = useState<string[]>(['FAIRBANKS_IMPERIAL_BRIDGE_ACTIVE', 'COHORT_READY', 'MARKET_INTEL_LOADED']);
 
-  const [safety, setSafety] = useState<SafetySettings>({
-    sessionWarnings: true,
-    warningInterval: 30,
-    maxSessionTime: 120,
-    engineMode: EngineMode.LIVE
-  });
-
-  const [filters, setFilters] = useState<FilterState>({
-    minOdds: -500,
-    maxOdds: 3000,
-    sports: ['NFL', 'NBA', 'UFC']
-  });
-
-  const triggerParticles = (x: number, y: number) => {
-    const newParticles = Array.from({ length: 25 }).map((_, i) => ({
-      id: Date.now() + i,
-      x,
-      y,
-      tx: (Math.random() - 0.5) * 600,
-      ty: (Math.random() - 0.5) * 600,
-      color: ['#3b82f6', '#d4af37', '#ffffff', '#ef4444'][Math.floor(Math.random() * 4)]
-    }));
-    setParticles(prev => [...prev, ...newParticles]);
-    setTimeout(() => {
-      setParticles(prev => prev.filter(p => !newParticles.find(np => np.id === p.id)));
-    }, 1100);
-  };
-
-  const handleAction = (e: React.MouseEvent | { clientX: number, clientY: number }, soundType: 'click' | 'jackpot' | 'powerup' | 'oogah' = 'click') => {
-    if (soundType === 'click') soundService.playDigitalClick();
-    if (soundType === 'jackpot') soundService.playJackpot();
-    if (soundType === 'powerup') soundService.playPowerUp();
-    if (soundType === 'oogah') soundService.playOogah();
-    triggerParticles(e.clientX, e.clientY);
-  };
-
-  const handleTerminalCommand = (cmd: string) => {
-    const upperCmd = cmd.trim().toUpperCase();
-    const parts = upperCmd.split(' ');
-    const baseCmd = parts[0];
-
-    setTerminalLogs(prev => [...prev, `cohort@foxwood:~$ ${cmd}`]);
-    soundService.playDigitalClick();
-
-    switch (baseCmd) {
-      case 'HELP':
-        setTerminalLogs(prev => [...prev, 
-          'AVAILABLE COMMANDS:',
-          '  HELP                Display this manifest',
-          '  LS                  List files in /fanduel_cohort',
-          '  CAT [FILE]          Simulate reading script content',
-          '  SCANNERS            Check status of active market scouts',
-          '  RUN_PROB_ENGINE     Execute probability models (Kelly Criterion)',
-          '  JANE_OVERRIDE       Activate Shadow Protocol (Lunar Alpha)',
-          '  CLEAR               Purge terminal logs'
-        ]);
-        break;
-
-      case 'LS':
-        setTerminalLogs(prev => [...prev, 
-          'DIRECTORY: /storage/emulated/0/root_2025/fanduel_cohort/',
-          '  - nfl_model_v4.py',
-          '  - nba_hedger_final.py',
-          '  - live_odds_scraper.py',
-          '  - requirements.txt',
-          '  - analysis_logs/'
-        ]);
-        break;
-
-      case 'CAT':
-        if (parts[1]) {
-           setTerminalLogs(prev => [...prev, `READING ${parts[1]}...`, '...', 'CODE_PREVIEW: # Ingesting market headers...', 'LOG_SUCCESS: File parsed.']);
-        } else {
-           setTerminalLogs(prev => [...prev, 'ERROR: SPECIFY_FILE (usage: CAT nba_hedger_final.py)']);
-        }
-        break;
-
-      case 'SCANNERS':
-        setTerminalLogs(prev => [...prev, 
-          'SCANNER_STATUS:',
-          '  [LIVE] FanDuel: ACTIVE (98% Reliability)',
-          '  [LIVE] DraftKings: ACTIVE (95% Reliability)',
-          '  [LIVE] BetMGM: ACTIVE (92% Reliability)',
-          '  [CALIB] Sentiment_Engine: RUNNING'
-        ]);
-        break;
-
-      case 'RUN_PROB_ENGINE':
-        setTerminalLogs(prev => [...prev, 'INITIALIZING_KELLY_CRITERION...', 'CALCULATING_ALPHA_DRIFT...', '...', 'RESULT: High-conviction Edge detected on 2 events.']);
-        soundService.playDataCrunch();
-        break;
-
-      case 'JANE_OVERRIDE':
-        setIsOverrideActive(true);
-        soundService.playOogah();
-        setTimeout(() => {
-          soundService.playJackpot();
-          soundService.playPowerUp();
-          triggerParticles(window.innerWidth/2, window.innerHeight/2);
-          setTerminalLogs(prev => [...prev, 
-            '!!! BREACH_SUCCESSFUL !!!',
-            'JANE_UNLEASHED: LUNAR_ALPHA_ONLINE', 
-            'FLY_ME_TO_THE_MOON_INITIATED',
-            'SIGHT_RECALIBRATED: LOOKING FOR THE STARS'
-          ]);
-        }, 1000);
-        break;
-
-      case 'CLEAR':
-        setTerminalLogs([]);
-        break;
-
-      default:
-        setTerminalLogs(prev => [...prev, `ERROR: COMMAND '${baseCmd}' NOT RECOGNIZED. TYPE 'HELP' FOR GUIDANCE.`]);
-        soundService.playOogah();
-    }
-  };
-
-  const runScout = useCallback(async (e?: React.MouseEvent) => {
-    setIsScouting(true);
-    soundService.playHiss();
-    if (e) triggerParticles(e.clientX, e.clientY);
-
+  const runFireflyScraper = useCallback(async () => {
+    if (isScraping) return;
+    setIsScraping(true);
+    soundService.playDataCrunch();
     try {
-      const result = await geminiService.scoutLiveMarkets(safety.engineMode);
-      if (result.data) {
-        setBets(result.data.filter(b => b.odds >= filters.minOdds && b.odds <= filters.maxOdds));
-        setSources(result.sources || []);
-        soundService.playJackpot();
-        triggerParticles(window.innerWidth / 2, window.innerHeight / 2);
-      }
-    } catch {
-      soundService.playOogah();
+      const result = await geminiService.scoutGlobalAlpha();
+      setBets(result);
+      if (result.length > 0) soundService.playJackpot();
+    } catch (e) {
+      console.error(e);
     } finally {
-      setIsScouting(false);
+      setIsScraping(false);
     }
-  }, [safety.engineMode, filters]);
+  }, [isScraping]);
 
-  const handleTabChange = (t: Tab, e: React.MouseEvent) => {
-    handleAction(e, 'click');
-    setActiveTab(t);
+  const handleIntroComplete = () => {
+    setBootState('SWIPE_TRANSITION');
+    setTimeout(() => setBootState('READY'), 1200);
   };
 
-  const toggleBookmark = (id: string, e: React.MouseEvent) => {
-    handleAction(e, 'jackpot');
-    setBookmarks(prev => prev.includes(id) ? prev.filter(b => b !== id) : [...prev, id]);
-  };
-
-  if (showIntro) return <FoxwoodIntro onComplete={() => setShowIntro(false)} />;
-  if (showExit) return <FoxwoodIntro isExit onComplete={() => window.location.reload()} />;
+  if (bootState === 'FAIRBANKS_INTRO') return <FairbanksTitleCard mode="INTRO" onComplete={() => setBootState('WARNING')} />;
+  if (bootState === 'WARNING') return <WarningOverlay onAccept={() => setBootState('KINGS_INTRO')} />;
+  if (bootState === 'KINGS_INTRO') return <KingsCouncilIntro onComplete={handleIntroComplete} />;
+  if (bootState === 'FAIRBANKS_OUTRO') return <FairbanksTitleCard mode="OUTRO" onComplete={() => window.close()} />;
 
   return (
-    <div id="app-container" className={`h-full w-full flex flex-col relative z-10 animate-app-reveal ${isOverrideActive ? 'override-glitch' : ''}`}>
+    <div className={`min-h-screen w-full relative overflow-hidden flex flex-col transition-all duration-1000 ${currentBrand === Brand.FANDUEL_COHORT ? 'bg-[#000d1a]' : currentBrand === Brand.TITAN_UNIVERSAL ? 'bg-[#0f0f0f]' : 'bg-[#020400]'}`}>
       
-      {/* Particle Overlay */}
-      {particles.map(p => (
-        <div 
-          key={p.id} 
-          className="particle" 
-          style={{ 
-            left: `${p.x}px`, 
-            top: `${p.y}px`, 
-            '--tw-tx': `${p.tx}px`, 
-            '--tw-ty': `${p.ty}px`,
-            backgroundColor: p.color,
-            width: '6px', height: '6px',
-            boxShadow: `0 0 15px ${p.color}`
-          } as any} 
-        />
-      ))}
-
-      {/* Header */}
-      <header className="px-6 py-5 border-b border-blue-500/30 flex justify-between items-center bg-black/60 backdrop-blur-3xl sticky top-0 z-[100] shadow-[0_5px_30px_rgba(0,0,0,0.5)]">
-        <div className="flex items-center gap-4">
-          <div 
-            className={`size-11 bg-gradient-to-tr ${isOverrideActive ? 'from-amber-600 via-amber-400 to-yellow-600 shadow-[0_0_30px_rgba(212,175,55,0.8)]' : 'from-blue-600 via-blue-400 to-blue-700 shadow-[0_0_25px_rgba(59,130,246,0.6)]'} rounded-2xl flex items-center justify-center border border-blue-300/40 cursor-pointer active:scale-90 transition-transform`}
-            onMouseEnter={() => soundService.playHover()}
-            onClick={(e) => handleAction(e, 'powerup')}
-          >
-            <BarChart3 size={24} className="text-white drop-shadow-[0_0_5px_white]" />
-          </div>
-          <div>
-            <h1 className="text-sm font-black tracking-tighter neon-text">{isOverrideActive ? 'JANE_UNFILTERED' : 'COHORT_PRO'} <span className="text-[#d4af37] animate-pulse">4.5</span></h1>
-            <div className="text-[8px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-1">
-               <ShieldCheck size={10} className="text-emerald-500" /> {isOverrideActive ? 'QUANTUM_ENCRYPTED' : 'CASINO_GRADE_SECURE'}
+      {/* 1800s Royal Casino Swipe Transition */}
+      {bootState === 'SWIPE_TRANSITION' && (
+        <div className="fixed inset-0 z-[40000] pointer-events-none">
+          {[...Array(5)].map((_, i) => (
+            <div 
+              key={i} 
+              className="swipe-card flex items-center justify-center border-y border-[#f9e29c]/20" 
+              style={{ 
+                top: `${i * 20}vh`, 
+                animationDelay: `${i * 0.08}s`,
+                background: `linear-gradient(${i % 2 ? '135deg' : '225deg'}, #4d3a0d 0%, #d4af37 50%, #4d3a0d 100%)`
+              }}
+            >
+              <div className="flex gap-24 opacity-20">
+                {[Crown, Spade, Club, Diamond, Heart, Sword].map((Icon, idx) => (
+                   <Icon key={idx} size={80} className="text-black/80" strokeWidth={1} />
+                ))}
+              </div>
             </div>
+          ))}
+        </div>
+      )}
+
+      {/* Edge Swipe Activators */}
+      <div className="absolute top-0 left-0 w-full h-8 z-[500] cursor-ns-resize hover:bg-[#d4af37]/10 transition-all flex items-center justify-center" onClick={() => setShowSidePanel('TOP')}>
+         <ChevronDown size={14} className="text-[#d4af37] opacity-40" />
+      </div>
+      <div className="absolute bottom-0 left-0 w-full h-8 z-[500] cursor-ns-resize hover:bg-[#d4af37]/10 transition-all flex items-center justify-center" onClick={() => setShowSidePanel('BOTTOM')}>
+         <ChevronUp size={14} className="text-[#d4af37] opacity-40" />
+      </div>
+
+      {/* Main Content */}
+      <header className="px-12 py-8 border-b border-[#d4af37]/20 flex justify-between items-center bg-black/40 backdrop-blur-3xl z-10">
+        <div className="flex items-center gap-12">
+          <button onClick={() => setShowSidePanel('LEFT')} className="size-16 bg-[#d4af37] rounded-2xl flex items-center justify-center shadow-[0_0_40px_rgba(212,175,55,0.3)] transition-all hover:scale-110 active:scale-95 group">
+            <Menu size={32} className="text-black group-hover:rotate-90 transition-transform" />
+          </button>
+          <div>
+            <div className="flex items-baseline gap-4">
+               <h1 className="font-monarch text-3xl font-black text-white tracking-tighter uppercase">{currentBrand.replace('_', ' ')}</h1>
+               <div className="px-3 py-1 bg-[#d4af37]/10 border border-[#d4af37]/20 rounded-lg text-[8px] font-tech text-[#d4af37] font-black tracking-widest uppercase">IMPERIAL EDITION</div>
+            </div>
+            <div className="text-[10px] font-tech text-[#f5e600] font-black uppercase tracking-[0.3em] mt-1 opacity-60">FAIRBANKS_IMPERIAL_LOGISTICS_NODE_4</div>
           </div>
         </div>
-        <div className="flex items-center gap-3">
-           <button 
-             onClick={(e) => runScout(e)} 
-             disabled={isScouting}
-             className={`p-3 bg-blue-600/10 rounded-xl border border-blue-500/30 transition-all hover:bg-blue-600/20 active:scale-95 ${isScouting ? 'text-blue-400 scale-90' : 'text-slate-400'}`}
-             onMouseEnter={() => soundService.playHover()}
-           >
-              <RefreshCw size={18} className={isScouting ? 'animate-spin' : ''} />
-           </button>
-           <button 
-             onClick={() => { soundService.playOogah(); setShowExit(true); }} 
-             className="p-3 bg-red-600/10 text-red-500 rounded-xl border border-red-500/20 active:scale-90 transition-all"
-             onMouseEnter={() => soundService.playHover()}
-           >
-              <Zap size={18} />
-           </button>
+
+        <div className="flex items-center gap-8">
+          <button onClick={() => setBootState('FAIRBANKS_OUTRO')} className="px-6 py-3 bg-red-500/10 border border-red-500/20 rounded-xl text-red-500 font-tech text-[10px] font-black uppercase tracking-widest hover:bg-red-500 hover:text-white transition-all">TERMINATE_VAULT</button>
+          <button onClick={runFireflyScraper} className="px-10 py-5 bg-[#d4af37] text-black font-monarch font-black text-xs uppercase tracking-widest rounded-xl flex items-center gap-4 hover:brightness-125 transition-all shadow-lg">
+             {isScraping ? <div className="size-5 border-2 border-black border-t-transparent rounded-full animate-spin" /> : <RefreshCw size={20} />}
+             {isScraping ? 'SCRUTINIZING...' : 'SCRUTINIZE_ALPHA'}
+          </button>
         </div>
       </header>
 
-      {/* Main Flow */}
-      <main className="flex-1 overflow-y-auto p-5 space-y-7 pb-40 no-scrollbar">
-        
-        {/* Market Ticker */}
-        <div className="flex gap-4 overflow-x-auto no-scrollbar py-2">
-           {(isOverrideActive ? ['SHADOW_ALPHA', 'JANE_LINK_HOT', 'FLY_ME_TO_THE_MOON', 'LUNAR_EDGE'] : ['HEDGING_ACTIVE', 'SLOT_CORE_READY', 'JACKPOT_CALIBRATED', 'ALPHA_SCAN']).map((label, i) => (
-             <div key={i} className="flex-shrink-0 bg-blue-900/10 border border-blue-500/20 px-5 py-2.5 rounded-2xl flex items-center gap-3 active:bg-blue-600/20 cursor-pointer transition-all border-b-2 shadow-inner">
-                <Sparkles size={16} className="text-[#d4af37]" />
-                <span className="text-[10px] font-black text-blue-200 uppercase tracking-widest">{label}</span>
-             </div>
-           ))}
-        </div>
+      <main className="flex-1 max-w-[1600px] mx-auto w-full p-10 space-y-20 pb-64 relative z-10 overflow-y-auto no-scrollbar">
+          <nav className="flex gap-4 p-2 bg-black/60 border border-white/5 rounded-[2rem] w-fit mx-auto sticky top-0 z-50 backdrop-blur-md shadow-2xl">
+            {[Tab.ALPHA_FLOW, Tab.NEURAL_COMMAND, Tab.MARKET_INTEL, Tab.COHORT_ENGINE, Tab.ASSETS].map(tab => (
+              <button 
+                key={tab} 
+                onClick={() => setActiveTab(tab)}
+                className={`px-10 py-5 rounded-2xl font-monarch text-[11px] font-black uppercase tracking-[0.2em] transition-all ${activeTab === tab ? 'bg-[#d4af37] text-black shadow-lg shadow-[#d4af37]/30' : 'text-slate-500 hover:text-white'}`}
+              >
+                {tab.replace('_', ' ')}
+              </button>
+            ))}
+          </nav>
 
-        {activeTab === Tab.MARKETS && (
-          <div className="space-y-7 steam-ingress">
-            <div className="grid grid-cols-2 gap-5">
-               <StatsCard label="Market Heat" value={<AnimatedCounter value={bets.length * 127} />} icon={<Globe size={18} />} />
-               <StatsCard label="Edge Alpha" value={safety.engineMode.replace('ENGINE_', '')} icon={<Activity size={18} />} trend={14} />
-            </div>
-
-            {/* BTTF II Strategy Console */}
-            <div className="bg-slate-900/80 border-2 border-blue-500/40 p-8 rounded-[3rem] space-y-6 relative overflow-hidden shadow-[0_0_40px_rgba(0,0,0,1)]">
-               <div className="absolute inset-0 bg-gradient-to-br from-blue-600/5 via-transparent to-transparent pointer-events-none" />
-               <div className="flex justify-between items-center relative z-10">
-                  <h3 className="text-[11px] font-black text-blue-400 uppercase tracking-[0.4em] flex items-center gap-2">
-                    <Database size={14} className="animate-pulse" /> Yield Parameters
-                  </h3>
-                  <div className="px-4 py-2 bg-black/80 rounded-xl border border-blue-500/30 text-xs font-mono gold-glow">
-                    +{filters.minOdds} / +{filters.maxOdds}
+          {activeTab === Tab.ALPHA_FLOW && (
+            <div className="animate-in fade-in slide-in-from-bottom-10 duration-1000 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-12">
+               <StatsCard suit="spades" label="Imperial Risk" value="12%" icon={<Shield size={26} />} />
+               <StatsCard suit="hearts" label="Monarch Focus" value="98%" icon={<Activity size={26} />} trend={+2} />
+               <StatsCard suit="diamonds" label="Market Conquests" value={bets.length} icon={<Target size={26} />} trend={+14} />
+               <StatsCard suit="clubs" label="Sovereign Luck" value="EXALTED" icon={<Zap size={26} />} />
+               
+               <div className="col-span-full neon-card p-14 rounded-[4rem] bg-black/40 border-2 border-[#d4af37]/30 space-y-12 shadow-[inset_0_0_80px_rgba(212,175,55,0.05)]">
+                  <div className="flex justify-between items-center">
+                    <h2 className="font-monarch text-4xl font-black text-white uppercase tracking-tighter">Imperial Market Headers</h2>
+                    <div className="flex items-center gap-4 text-[10px] font-tech text-[#d4af37]/60 font-black uppercase tracking-[0.5em]">
+                       <span className="size-2 bg-[#d4af37] rounded-full animate-pulse" /> FEED: SOVEREIGN_ALPHA_LINK
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
+                    {bets.map(bet => (
+                      <div key={bet.id} className="p-12 bg-white/5 border border-white/5 rounded-[2.5rem] hover:border-[#d4af37]/40 transition-all group relative overflow-hidden royal-glow">
+                        <div className="flex justify-between items-start mb-8">
+                           <span className="text-[10px] font-tech font-black text-[#d4af37] uppercase tracking-widest bg-[#d4af37]/10 px-6 py-2 rounded-xl border border-[#d4af37]/30">{bet.type}</span>
+                           <div className="text-6xl font-monarch font-black text-white">{bet.odds}</div>
+                        </div>
+                        <h4 className="font-monarch text-2xl text-white uppercase tracking-tight mb-10 leading-snug">{bet.event}</h4>
+                        <div className="flex justify-between items-center border-t border-white/10 pt-10">
+                           <div className="text-[10px] font-tech text-slate-500 uppercase font-black tracking-widest">{bet.marketName}</div>
+                           <button className="px-10 py-4 bg-[#d4af37] text-black font-monarch font-black text-[11px] rounded-xl hover:brightness-125 transition-all shadow-xl uppercase">Conquer</button>
+                        </div>
+                        {bet.sources && bet.sources.length > 0 && (
+                          <div className="mt-8 pt-6 border-t border-white/10 flex flex-wrap gap-3">
+                             {bet.sources.map((s, idx) => (
+                               <a key={idx} href={s.uri} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 px-4 py-2 bg-[#d4af37]/5 border border-[#d4af37]/20 rounded-xl text-[9px] font-tech text-[#d4af37] font-black uppercase hover:bg-[#d4af37]/20 transition-all">
+                                 <ExternalLink size={12} /> ARCHIVE_{idx + 1}
+                               </a>
+                             ))}
+                          </div>
+                        )}
+                      </div>
+                    ))}
                   </div>
                </div>
-               <div className="h-3 bg-black rounded-full border border-blue-500/10 p-1">
-                  <div className={`h-full w-[70%] bg-gradient-to-r ${isOverrideActive ? 'from-amber-900 via-amber-500 to-white' : 'from-blue-900 via-blue-500 to-white'} rounded-full shadow-[0_0_15px_rgba(59,130,246,0.8)]`} />
-               </div>
-               <div className="grid grid-cols-3 gap-3">
-                  {['STABLE', 'SCALABLE', 'RISKY'].map(lvl => (
-                    <button 
-                      key={lvl} 
-                      className="py-3 bg-blue-900/10 rounded-2xl text-[9px] font-black text-slate-500 border border-blue-500/10 hover:border-blue-500 hover:text-white transition-all uppercase"
-                      onMouseEnter={() => soundService.playHover()}
-                      onClick={(e) => handleAction(e, 'click')}
-                    >
-                      {lvl}
-                    </button>
-                  ))}
-               </div>
             </div>
+          )}
 
-            <div className="grid grid-cols-1 gap-5">
-              {bets.length === 0 && !isScouting && (
-                <div className="text-center py-28 bg-blue-900/5 rounded-[4rem] border border-dashed border-blue-500/20">
-                   <RefreshCw size={32} className="text-blue-500/20 mx-auto mb-4" />
-                   <p className="text-[10px] font-black text-slate-600 uppercase tracking-[0.3em]">Scout Core Idle...</p>
-                </div>
-              )}
-              {bets.map((bet, idx) => (
-                <div key={bet.id} className="casino-card bg-slate-900/60 border border-blue-500/10 rounded-[2.5rem] p-9 hover:bg-slate-900/90 hover:border-blue-500/30 transition-all relative overflow-hidden shadow-2xl">
-                   <div className="absolute top-0 right-0 p-8">
-                      <button 
-                        onClick={(e) => toggleBookmark(bet.id, e)} 
-                        className={`transition-all duration-300 ${bookmarks.includes(bet.id) ? 'text-[#d4af37] scale-125' : 'text-slate-800 hover:text-slate-600'}`}
-                      >
-                         <Bookmark size={24} fill={bookmarks.includes(bet.id) ? "currentColor" : "none"} />
-                      </button>
-                   </div>
-                   <div className="flex justify-between items-start mb-8">
-                      <div className="space-y-3">
-                         <div className="px-4 py-1.5 bg-blue-600/10 border border-blue-500/20 rounded-full text-[10px] font-black text-blue-400 uppercase tracking-widest inline-block">{bet.type}</div>
-                         <h4 className="text-2xl font-black text-white tracking-tighter group-hover:text-blue-400">{bet.event}</h4>
-                      </div>
-                      <div className="bg-black px-7 py-4 rounded-[2rem] border-2 border-blue-500/40 text-3xl font-black gold-glow shadow-[0_0_20px_rgba(212,175,55,0.2)]">
-                         {bet.odds > 0 ? `+${bet.odds}` : bet.odds}
-                      </div>
-                   </div>
-                   <div className="flex justify-between items-center border-t border-white/5 pt-6">
-                      <div className="text-xs font-bold text-slate-500 flex items-center gap-2">
-                        <Activity size={16} className="text-blue-500" /> {bet.marketName}
-                      </div>
-                      <button 
-                        onClick={(e) => handleAction(e, 'jackpot')}
-                        className="px-6 py-3 bg-blue-600 text-white text-[11px] font-black uppercase rounded-[1.5rem] shadow-[0_10px_20px_rgba(59,130,246,0.3)] hover:scale-105 active:scale-95 transition-all"
-                      >
-                        Lock Edge
-                      </button>
-                   </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Tactical Consultant Integration */}
-        {activeTab === Tab.CONSULTANT && (
-          <StrategyConsultant bets={bets} isOverride={isOverrideActive} />
-        )}
-
-        {activeTab === Tab.SCRIPTS && (
-          <div className="space-y-7 steam-ingress">
-             <Terminal logs={terminalLogs} onCommand={handleTerminalCommand} />
-             <div className="grid grid-cols-2 gap-4">
-                <button 
-                  onClick={(e) => runScout(e)}
-                  className="py-8 bg-blue-600/5 border-2 border-blue-600/20 rounded-[2.5rem] flex flex-col items-center gap-4 group active:scale-95 transition-all"
-                >
-                   <RefreshCw size={24} className="text-blue-400 group-hover:rotate-180 transition-all duration-700" />
-                   <span className="text-[10px] font-black uppercase tracking-widest text-blue-400">INGEST_ALPHA</span>
-                </button>
-                <button 
-                  onClick={(e) => handleTerminalCommand('HELP')}
-                  className="py-8 bg-white/5 border-2 border-white/10 rounded-[2.5rem] flex flex-col items-center gap-4 group active:scale-95 transition-all"
-                >
-                   <SettingsIcon size={24} className="text-slate-500" />
-                   <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">TUTORIAL_MODE</span>
-                </button>
-             </div>
-          </div>
-        )}
-
-        {activeTab === Tab.SETTINGS && (
-          <div className="space-y-7 steam-ingress">
-            <div className="bg-gradient-to-br from-blue-900/40 to-black border-2 border-blue-500/30 p-12 rounded-[4rem] space-y-10 shadow-2xl">
-              <div className="flex items-center gap-8 justify-center">
-                 <Smartphone size={48} className="text-blue-500 drop-shadow-[0_0_10px_rgba(59,130,246,0.5)]" />
-                 <Link2 size={32} className="text-slate-700 animate-pulse" />
-                 <Laptop size={48} className="text-slate-800" />
-              </div>
-              <div className="text-center space-y-3">
-                <h3 className="text-3xl font-black italic tracking-tighter text-white">Quantum Bridge</h3>
-                <p className="text-xs text-slate-500 leading-relaxed max-w-xs mx-auto">Unified sync for Android and Windows environments. Real-time log mirroring.</p>
-              </div>
-              <button 
-                onClick={(e) => { handleAction(e, 'powerup'); setSyncCode('BR-' + Math.random().toString(36).substring(2, 6).toUpperCase()); }}
-                className="w-full py-6 bg-blue-600 text-white text-xs font-black uppercase rounded-3xl shadow-[0_15px_40px_rgba(59,130,246,0.4)] border-b-4 border-blue-800 active:translate-y-1 active:border-b-0 transition-all"
-              >
-                Initiate Bridge
-              </button>
-              {syncCode && (
-                <div className="text-center p-8 bg-black rounded-[2rem] border border-blue-500/40 neon-text text-4xl font-mono font-black tracking-[0.5em]">
-                  {syncCode}
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-
-        {activeTab === Tab.SAFETY && (
-          <div className="space-y-7 steam-ingress">
-             <div className="bg-gradient-to-b from-blue-900/10 to-black border border-blue-500/20 p-10 rounded-[4rem]">
-                <div className="flex items-center gap-6 mb-10">
-                   <div className="size-16 bg-emerald-500/10 border-2 border-emerald-500/30 rounded-3xl flex items-center justify-center text-emerald-400"><ShieldCheck size={36} /></div>
-                   <h3 className="text-2xl font-black text-white italic tracking-tighter">Safe Play Protocol</h3>
-                </div>
-                <div className="grid gap-5">
-                   {['Reality Checks (15m)', 'Session Limit (120m)', 'Budget Threshold', 'Alpha Guard'].map((l, i) => (
-                     <div key={i} className="flex justify-between items-center p-6 bg-white/[0.03] border border-white/5 rounded-3xl">
-                        <span className="text-xs font-bold text-slate-300 uppercase">{l}</span>
-                        <div className="size-10 bg-emerald-500/20 border border-emerald-500/30 rounded-xl flex items-center justify-center text-emerald-400">
-                           <ShieldCheck size={18} />
-                        </div>
-                     </div>
-                   ))}
-                </div>
-             </div>
-          </div>
-        )}
-
-        {(activeTab === Tab.PITCH || activeTab === Tab.DOCS) && (
-           <div className="steam-ingress">
-             {activeTab === Tab.PITCH ? <PitchDeck /> : <Documentation />}
-           </div>
-        )}
-
+          {activeTab === Tab.NEURAL_COMMAND && <StrategyConsultant bets={bets} biometrics={{heartRateSim: 72, stressFactor: 12, focusIndex: 98, sessionDuration: 0}} psychState={PsychState.OPTIMAL} />}
+          {activeTab === Tab.MARKET_INTEL && <MarketIntel />}
+          {activeTab === Tab.COHORT_ENGINE && <Terminal logs={terminalLogs} onCommand={c => setTerminalLogs(p => [...p, c])} />}
+          {activeTab === Tab.ASSETS && <KnowledgeBase />}
       </main>
 
-      {/* Persistent Navigation */}
-      <nav className="fixed bottom-0 left-0 right-0 bg-black/95 backdrop-blur-3xl border-t border-blue-500/30 px-6 pb-14 pt-7 flex justify-around items-center z-[1000] shadow-[0_-10px_40px_rgba(0,0,0,0.8)]">
-        {[
-          { id: Tab.MARKETS, icon: LayoutDashboard, label: 'Feed' },
-          { id: Tab.CONSULTANT, icon: MessageSquare, label: 'Tactical' },
-          { id: Tab.SCRIPTS, icon: TerminalIcon, label: 'Console' },
-          { id: Tab.SETTINGS, icon: SettingsIcon, label: 'Bridge' },
-          { id: Tab.SAFETY, icon: HeartHandshake, label: 'Safety' }
-        ].map(t => (
-          <button 
-            key={t.id} 
-            onClick={(e) => handleTabChange(t.id, e)}
-            onMouseEnter={() => soundService.playHover()}
-            className={`flex flex-col items-center gap-3 transition-all outline-none ${activeTab === t.id ? 'text-blue-400 scale-125 drop-shadow-[0_0_15px_rgba(59,130,246,0.8)]' : 'text-slate-600'}`}
-          >
-            <t.icon size={24} strokeWidth={activeTab === t.id ? 3 : 2} />
-            <span className="text-[9px] font-black uppercase tracking-widest">{t.label}</span>
-          </button>
-        ))}
-      </nav>
-
-      <style>{`
-        @keyframes thump {
-          0%, 100% { transform: scale(1); filter: brightness(1); }
-          50% { transform: scale(1.03); filter: brightness(1.2); }
-        }
-        @keyframes app-reveal {
-          0% { transform: scale(0.95); opacity: 0; filter: blur(10px); }
-          100% { transform: scale(1); opacity: 1; filter: blur(0); }
-        }
-        @keyframes glitch-anim {
-          0% { filter: hue-rotate(0deg) contrast(1); transform: translate(0); }
-          2% { filter: hue-rotate(180deg) contrast(2); transform: translate(5px, -5px); }
-          4% { filter: hue-rotate(0deg) contrast(1); transform: translate(0); }
-        }
-        .animate-thump { animation: thump 1.5s infinite ease-in-out; }
-        .animate-app-reveal { animation: app-reveal 1s cubic-bezier(0.23, 1, 0.32, 1) forwards; }
-        .override-glitch {
-           animation: glitch-anim 5s infinite;
-           border: 2px solid #d4af37 !important;
-        }
-        .override-glitch .neon-text {
-           color: #d4af37 !important;
-           text-shadow: 0 0 20px #d4af37;
-        }
-      `}</style>
+      <div className="fixed bottom-0 left-0 w-full h-14 bg-black/95 backdrop-blur-3xl border-t border-[#d4af37]/20 z-50 flex items-center overflow-hidden px-12 cursor-pointer hover:bg-white/5 transition-all" onClick={() => setShowSidePanel('BOTTOM')}>
+         <div className="flex items-center gap-12 animate-ticker whitespace-nowrap">
+            {[...Array(12)].map((_, i) => (
+              <div key={i} className="flex items-center gap-4 text-[10px] font-tech text-slate-500 uppercase tracking-widest font-black">
+                 <Crown size={14} className="text-[#d4af37]" />
+                 <span>IMPERIAL_BRIDGE_NODE_{i}: STABLE</span>
+                 <span className="text-[#d4af37] font-black">EDGE: {(Math.random() * 12).toFixed(2)}%</span>
+              </div>
+            ))}
+         </div>
+      </div>
     </div>
   );
 };

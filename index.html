@@ -4,82 +4,110 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    <meta name="theme-color" content="#020617">
-    <title>FanDuel Cohort | Dopamine Factory v4.5</title>
+    <meta name="theme-color" content="#0a0a0a">
+    <title>FAIRBANKS COMMAND | Imperial Logistics Suite</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&family=JetBrains+Mono:wght@700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel+Decorative:wght@700;900&family=JetBrains+Mono:wght@500;800&family=Inter:wght@400;700;900&family=Unbounded:wght@400;700;900&family=MedievalSharp&display=swap" rel="stylesheet">
     <style>
+        :root {
+            --neon-green: #00f51d;
+            --neon-yellow: #f5e600;
+            --toxic-green: #a3ff00;
+            --fairbanks-blue: #1d4ed8;
+            --fairbanks-gold: #d4af37;
+            --fairbanks-gold-bright: #f9e29c;
+            --fairbanks-gold-dark: #aa8a2e;
+            --regal-red: #4a0404;
+            /* Competitive Intel Colors */
+            --fanduel-blue: #1493FF;
+            --draftkings-lime: #9AC434;
+            --draftkings-orange: #F46C22;
+        }
+
+        * {
+          box-sizing: border-box;
+          scrollbar-width: none;
+          -ms-overflow-style: none;
+        }
+        *::-webkit-scrollbar { display: none; }
+
         body { 
-          background: #000; 
-          overflow: hidden; 
+          background: #020400;
+          color: #f8fafc;
+          overflow-x: hidden; 
           font-family: 'Inter', sans-serif; 
           -webkit-tap-highlight-color: transparent;
         }
 
-        /* BTTF II PHOSPHOR GLOW */
-        #root {
-            position: relative;
-            height: 100vh;
-            width: 100vw;
-            overflow: hidden;
-            background: radial-gradient(circle at center, #050b1a 0%, #000 100%);
+        .font-dk { font-family: 'Unbounded', sans-serif; }
+        .font-tech { font-family: 'JetBrains Mono', monospace; }
+        .font-monarch { font-family: 'Cinzel Decorative', serif; }
+        .font-battle { font-family: 'MedievalSharp', cursive; }
+
+        .gold-gradient-text {
+          background: linear-gradient(to bottom, #f9e29c 0%, #d4af37 45%, #aa8a2e 55%, #6b5113 100%);
+          -webkit-background-clip: text;
+          -webkit-text-fill-color: transparent;
+          filter: drop-shadow(0 2px 4px rgba(0,0,0,0.5));
         }
 
-        /* THE "DOPAMINE" SCANLINES */
-        #root::after {
-            content: "";
-            position: absolute;
-            top: 0; left: 0; width: 100%; height: 100%;
-            background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.1) 50%), 
-                        linear-gradient(90deg, rgba(255, 0, 0, 0.03), rgba(0, 255, 0, 0.01), rgba(0, 0, 255, 0.03));
-            background-size: 100% 3px, 3px 100%;
-            z-index: 10000;
-            pointer-events: none;
-            opacity: 0.4;
+        /* Battleborn Chipped Stone Effect */
+        .chipped-text {
+          position: relative;
+          color: #d4af37;
+          text-shadow: 
+            2px 2px 0px #4d3a0d,
+            -1px -1px 0px #f9e29c,
+            3px 3px 10px rgba(0,0,0,0.8);
+          letter-spacing: -0.02em;
         }
 
-        /* NEON FLICKER */
-        @keyframes neonFlicker {
-            0%, 19%, 21%, 23%, 25%, 54%, 56%, 100% { opacity: 1; }
-            20%, 22%, 24%, 55% { opacity: 0.8; }
-        }
-        .neon-text {
-            color: #3b82f6;
-            text-shadow: 0 0 10px rgba(59, 130, 246, 0.8), 0 0 20px rgba(59, 130, 246, 0.4);
-            animation: neonFlicker 3s infinite;
+        @keyframes stone-chip-fly {
+          0% { transform: translate(0,0) rotate(0); opacity: 0; }
+          20% { opacity: 1; }
+          100% { transform: translate(var(--tw-x), var(--tw-y)) rotate(var(--tw-r)); opacity: 0; }
         }
 
-        .gold-glow {
-            color: #d4af37;
-            text-shadow: 0 0 10px rgba(212, 175, 55, 0.8), 0 0 30px rgba(212, 175, 55, 0.4);
+        .chip {
+          position: absolute;
+          width: 6px;
+          height: 6px;
+          background: #d4af37;
+          clip-path: polygon(20% 0%, 80% 10%, 100% 50%, 70% 90%, 10% 80%);
+          pointer-events: none;
+          animation: stone-chip-fly 1.8s ease-out forwards;
         }
 
-        /* INTERACTIVE CARD TILT */
-        .casino-card {
-            transition: transform 0.2s cubic-bezier(0.2, 0, 0.4, 1), box-shadow 0.2s ease;
-            transform-style: preserve-3d;
-            perspective: 1000px;
-        }
-        .casino-card:active {
-            transform: scale(0.98) rotateX(2deg);
+        .parchment-texture {
+          background-image: url("https://www.transparenttextures.com/patterns/dark-matter.png");
+          background-color: #020400;
         }
 
-        /* PARTICLE ENGINE */
-        .particle {
-            position: absolute;
-            pointer-events: none;
-            z-index: 9999;
-            border-radius: 50%;
-            animation: particleFly 1s cubic-bezier(0.1, 0.9, 0.3, 1) forwards;
-        }
-        @keyframes particleFly {
-            0% { transform: translate(0, 0) scale(1); opacity: 1; }
-            100% { transform: translate(var(--tw-tx), var(--tw-ty)) scale(0); opacity: 0; }
+        /* Card Swipe Animation */
+        @keyframes casino-wipe {
+          0% { transform: translateX(-100%) skewX(-20deg) scale(1.3); opacity: 0; }
+          30% { opacity: 1; }
+          70% { opacity: 1; }
+          100% { transform: translateX(180%) skewX(20deg) scale(1.3); opacity: 0; }
         }
 
-        ::-webkit-scrollbar { width: 0px; }
-        .no-scrollbar::-webkit-scrollbar { display: none; }
-        * { -webkit-font-smoothing: antialiased; }
+        .swipe-card {
+          position: fixed;
+          top: 0;
+          left: 0;
+          width: 110vw;
+          height: 20vh;
+          background: linear-gradient(135deg, #d4af37 0%, #6b5113 100%);
+          z-index: 30000;
+          pointer-events: none;
+          animation: casino-wipe 1.2s cubic-bezier(0.8, 0, 0.2, 1) forwards;
+          border-y: 1px solid #f9e29c;
+          box-shadow: 0 0 100px rgba(0,0,0,0.8);
+        }
+
+        .royal-glow {
+          box-shadow: 0 0 50px rgba(212, 175, 55, 0.15);
+        }
     </style>
 <script type="importmap">
 {
@@ -94,7 +122,8 @@
 }
 </script>
 </head>
-<body class="text-slate-100">
+<body class="parchment-texture">
     <div id="root"></div>
+    <script type="module" src="index.tsx"></script>
 </body>
 </html>
